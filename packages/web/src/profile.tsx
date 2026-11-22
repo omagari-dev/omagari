@@ -53,6 +53,7 @@ export function ProfilePanel({
   solo = false,
   onLogout,
   onSettings,
+  waiting,
   onGuide,
   onPresence,
   onMessage,
@@ -65,6 +66,8 @@ export function ProfilePanel({
   solo?: boolean;
   onLogout: () => void;
   onSettings: () => void;
+  /** Access requests waiting for me (an operator). */
+  waiting?: number;
   onPresence: SetPresence;
   onMessage: SetMessage;
 }) {
@@ -133,6 +136,7 @@ export function ProfilePanel({
           onPresence={onPresence}
           onMessage={onMessage}
           onLogout={onLogout}
+          waiting={waiting}
           onSettings={() => {
             close();
             onSettings();
@@ -163,6 +167,7 @@ function StatusMenu({
   onMessage,
   onLogout,
   onSettings,
+  waiting,
   onGuide,
   onDone,
 }: {
@@ -173,6 +178,7 @@ function StatusMenu({
   onMessage: SetMessage;
   onLogout: () => void;
   onSettings: () => void;
+  waiting?: number;
   onGuide?: () => void;
   onDone: () => void;
 }) {
@@ -400,6 +406,11 @@ function StatusMenu({
         onClick={onSettings}
       >
         {t.profile.menu.settings}
+        {!!waiting && (
+          <span className="count-pill" role="img" aria-label={t.settings.access.waiting(waiting)}>
+            {waiting}
+          </span>
+        )}
       </button>
       {onGuide && (
         <button

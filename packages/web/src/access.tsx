@@ -235,9 +235,12 @@ export function Access({
 export function AccessRequestsPage({
   session,
   check,
+  live,
 }: {
   session: string;
   check: (error: unknown) => void;
+  /** The list as the live connection last sent it. A change replaces what the page shows. */
+  live?: PendingAccess[];
 }) {
   const [requests, setRequests] = useState<PendingAccess[] | "error">();
   const [busy, setBusy] = useState<number>();
@@ -251,6 +254,9 @@ export function AccessRequestsPage({
         setRequests("error");
       });
   }, []);
+  useEffect(() => {
+    if (live) setRequests(live);
+  }, [live]);
   const decide = async (id: number, approve: boolean) => {
     setBusy(id);
     setFailed(false);

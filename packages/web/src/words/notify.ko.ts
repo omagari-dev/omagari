@@ -31,6 +31,8 @@ export const notifyKo: Words["notify"] = {
   decisionTitle: "결정이 필요해요",
   decisionBody: (title) => `결정: ${title}`,
   debateBody: (agenda) => `토론: ${agenda}`,
+  accessTitle: "가입 신청이 왔어요",
+  accessBody: (account: string) => `${account} 계정이 가입을 신청했어요`,
   replyTitle: "내 글에 답장이 왔어요",
   threadTitle: "스레드에 새 글이 왔어요",
   replyBody: (name, line) => `${name}: ${line}`,

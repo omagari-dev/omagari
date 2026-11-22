@@ -105,6 +105,7 @@ export const ko: Words = {
     server: "서버",
     access: {
       empty: "기다리는 신청이 없어요",
+      waiting: (count: number) => `${count}건 기다려요`,
       by: (login, when) => `${login} 신청 · ${when}`,
       approve: "승인",
       deny: "거절",

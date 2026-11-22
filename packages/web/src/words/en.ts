@@ -100,6 +100,7 @@ export const en = {
     server: "Server",
     access: {
       empty: "Nothing waiting",
+      waiting: (count: number) => `${count} waiting`,
       by: (login: string, when: string) => `Requested by ${login} · ${when}`,
       approve: "Approve",
       deny: "Deny",

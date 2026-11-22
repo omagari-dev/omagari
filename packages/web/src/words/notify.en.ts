@@ -31,6 +31,8 @@ export const notifyEn = {
   decisionTitle: "Your call is needed",
   decisionBody: (title: string) => `Decision: ${title}`,
   debateBody: (agenda: string) => `Debate: ${agenda}`,
+  accessTitle: "New access request",
+  accessBody: (account: string) => `${account} asked for access`,
   replyTitle: "Someone replied to you",
   threadTitle: "New message in a thread",
   replyBody: (name: string, line: string) => `${name}: ${line}`,

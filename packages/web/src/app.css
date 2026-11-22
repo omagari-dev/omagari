@@ -6796,3 +6796,18 @@ button.person {
 .confirm-delete .dialog-lead {
   margin-top: 12px;
 }
+
+/* A count of waiting access requests (#442): a small pill at the right end of the row. Not a second accent: it's the primary fill like the unread dot. */
+.count-pill {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--pill);
+  background: var(--primary-fill);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}

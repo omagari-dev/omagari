@@ -13,6 +13,8 @@ export type Notice = {
   dm?: true;
   /** A message in a thread opens that thread (its original's number). */
   thread?: number;
+  /** Opens Settings → Access requests instead of a channel. */
+  access?: true;
 };
 
 export type NoticeContext = {
@@ -105,6 +107,19 @@ export function noticeFor(event: LiveEvent, ctx: NoticeContext): Notice | undefi
       };
     }
     return;
+  }
+
+  if (event.kind === "access") {
+    // An operator's call (like a decision), so it follows the same switch. The server sends this only to operators.
+    const { added } = event.payload;
+    if (!prefs.notifyDecisions || !added) return;
+    return {
+      tag: `access-${added.id}`,
+      title: t.notify.accessTitle,
+      body: t.notify.accessBody(added.account),
+      channel: "",
+      access: true,
+    };
   }
 
   if (event.kind === "qa") {

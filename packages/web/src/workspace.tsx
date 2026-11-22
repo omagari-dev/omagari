@@ -14,6 +14,7 @@ import {
   isDeletedMember,
   type Label,
   type MemberView,
+  type PendingAccess,
   type Prefs,
   type Presence,
   type PresenceDuration,
@@ -253,6 +254,10 @@ export function Workspace({
   const [collapsed, toggleCollapsed] = useCollapsed("omagari.channels-collapsed");
   const [members, setMembers] = useState<MemberView[]>();
   const [settings, setSettings] = useState(false);
+  /** The access requests waiting for an operator. Only operators get them live (`access`). */
+  const [waiting, setWaiting] = useState<PendingAccess[]>();
+  /** Settings opens on Access requests (a notification was pressed). */
+  const [toAccess, setToAccess] = useState(false);
   /** My personal settings. Changes from my other tabs and devices come as `prefs` on the live connection. */
   const [prefs, setPrefs] = useState<Prefs>(me.prefs);
   /** Has my runner ever connected, and which repos have I shared (#354). Read again on every connect and when the member list changes. */
@@ -744,6 +749,7 @@ export function Workspace({
         setLabelsByRepo((all) => ({ ...all, [repos[0] as string]: event.payload }));
       else if (event.kind === "forumDeleted")
         setChannels((list) => list?.filter((channel) => channel.id !== event.payload.id));
+      else if (event.kind === "access") setWaiting(event.payload.requests);
       else if (event.kind === "message") receive(event.payload);
       else if (event.kind === "members") {
         setMembers(event.payload.members);
@@ -790,7 +796,12 @@ export function Workspace({
       shownNow.close();
     };
   };
-  const goTo = ({ channel, dm, thread }: Notice) => {
+  const goTo = ({ channel, dm, thread, access }: Notice) => {
+    if (access) {
+      setToAccess(true);
+      setSettings(true);
+      return;
+    }
     const item = posts?.find((one) => one.channel === channel);
     if (item) to(item.forums[0] ?? OTHER.id, item.alert);
     else to(channel);
@@ -1017,8 +1028,10 @@ export function Workspace({
       solo={solo}
       mine={members?.find((member) => member.login === me.login)}
       onLogout={onLogout}
+      waiting={waiting?.length}
       onSettings={() => {
         drawer.current?.close();
+        setToAccess(false);
         setSettings(true);
       }}
       guideButton={
@@ -1725,6 +1738,8 @@ export function Workspace({
                   await call(server(session), api.deleteWorkspace, { workspace: space.id });
                   onReload();
                 }}
+                waiting={waiting}
+                toAccess={toAccess}
                 onClose={() => setSettings(false)}
               />
             )}
@@ -1833,6 +1848,7 @@ function ChannelPanel({
   mine,
   onLogout,
   onSettings,
+  waiting,
   guideButton,
   onGuide,
   onPresence,
@@ -1846,6 +1862,8 @@ function ChannelPanel({
   mine?: MemberView;
   onLogout: () => void;
   onSettings: () => void;
+  /** How many access requests wait for me, when I'm an operator. */
+  waiting?: number;
   /** "Getting started" above the profile panel, while it's on (#433). */
   guideButton: ReactNode;
   /** Turns "Getting started" back on from the profile menu. Missing while it's on. */
@@ -1865,6 +1883,7 @@ function ChannelPanel({
         solo={solo}
         onLogout={onLogout}
         onSettings={onSettings}
+        waiting={waiting}
         onGuide={onGuide}
         onPresence={onPresence}
         onMessage={onMessage}

@@ -219,3 +219,28 @@ test("nothing shows on Do not disturb, while looking at the tab, or when this br
   assert.equal(noticeFor(answer(), ctx({ looking: true })), undefined);
   assert.equal(noticeFor(decision(["jieun"]), ctx({ allowed: false })), undefined);
 });
+
+test("a new access request notifies with the account, and a plain list update or the switch off doesn't", () => {
+  const row = {
+    id: 3,
+    account: "other-team",
+    state: "pending",
+    at: "",
+    login: "carol",
+    name: "carol",
+  };
+  const event = (added?: typeof row) =>
+    ({ kind: "access", payload: { requests: [row], added } }) as unknown as LiveEvent;
+  assert.deepEqual(noticeFor(event(row), ctx()), {
+    tag: "access-3",
+    title: "New access request",
+    body: "other-team asked for access",
+    channel: "",
+    access: true,
+  });
+  assert.equal(noticeFor(event(), ctx()), undefined);
+  assert.equal(
+    noticeFor(event(row), ctx({ prefs: { ...DEFAULT_PREFS, notifyDecisions: false } })),
+    undefined,
+  );
+});
