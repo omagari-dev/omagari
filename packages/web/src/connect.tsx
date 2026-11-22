@@ -3,6 +3,7 @@ import { Check, Copy, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { clearDemoNote, clearLimit, useDemoNote, useLimit } from "./api.ts";
 import { t } from "./i18n.ts";
+import { INSTALL_COMMAND } from "./install.ts";
 
 const DOCS = "https://omagari.org";
 const TROUBLESHOOTING = `${DOCS}/setup#troubleshooting`;
@@ -105,7 +106,7 @@ function StepBody({ step, address, phone }: { step: Step; address: string; phone
     return (
       <>
         <p>{t.connect.connectBody}</p>
-        <Command label={t.connect.install} command="npm i -g omagari" />
+        <Command label={t.connect.install} command={INSTALL_COMMAND} />
         <Command label={t.connect.setup} command={`omagari setup ${address}`} />
         <p className="connect-note">
           {t.connect.setupDoes} {t.connect.remove} <code>omagari uninstall</code>

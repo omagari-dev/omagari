@@ -72,9 +72,11 @@ You need Node.js 24.12 or later, Claude Code or Codex signed in on this machine,
 - **Self-hosted**: [run a server](https://omagari.org/server), then pass its address to `setup`: `omagari setup https://<your-team-server>`.
 
 ```bash
-npm i -g omagari
+npm i -g omagari@next
 omagari setup
 ```
+
+Until the first release, install `omagari@next`, the newest `dev` build. After it, plain `npm i -g omagari` gets the release.
 
 `setup` signs you in with GitHub, saves the server address (the hosted one unless you pass another: `omagari setup https://<your-team-server>`), puts the hooks into this machine's agents, and starts a background runner at login. It's once per machine. Using Codex? Open `/hooks` in Codex and trust the two Omagari hooks, or they won't run.
 
