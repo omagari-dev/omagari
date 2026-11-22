@@ -121,7 +121,7 @@ test("when a decision is written up in a post, a decision PR opens under the wri
       `# 0001. ${DECISION.title}`,
       "",
       "- Deciders: Alice Kim (@alice), owner (@owner)",
-      `- Source: ${world.server.url}/#${post}`,
+      `- Source: ${world.server.url}/channels/omagari-test/${post}`,
       "",
       "## Context",
       "",

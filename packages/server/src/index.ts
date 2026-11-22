@@ -4588,10 +4588,14 @@ export async function startServer(options: {
     }
   };
 
+  /** A link to a post in the app's path form (ADR-0057), in the post's workspace (the repo's account). */
+  const postLink = (post: string, repo: string) =>
+    `${options.publicUrl ?? url}/channels/${ownerOf(repo)}/${post}`;
+
   /** The decision file's content. Deciders are logins, and names are the current profile names. */
   const decisionFile = (
     number: string,
-    post: string,
+    source: string,
     deciders: string[],
     fields: { title: string; context: string; decision: string; consequences: string },
   ) => {
@@ -4600,7 +4604,7 @@ export async function startServer(options: {
       `# ${number}. ${fields.title}`,
       "",
       `- Deciders: ${named.join(", ")}`,
-      `- Source: ${options.publicUrl ?? url}/#${post}`,
+      `- Source: ${source}`,
       "",
       "## Context",
       "",
@@ -4685,7 +4689,8 @@ export async function startServer(options: {
           .replace(/^-+|-+$/g, "")
           .slice(0, 60) || "decision";
       path = `${DECISIONS}/${number}-${slug}.md`;
-      const files = [{ path, content: decisionFile(number, post, deciders, fields) }];
+      const source = postLink(post, repo);
+      const files = [{ path, content: decisionFile(number, source, deciders, fields) }];
       const agents = await github.read(token, repo, base.sha, "AGENTS.md");
       if (!agents?.includes(DECISIONS)) {
         const before = agents ? `${agents.replace(/\n*$/, "")}\n\n` : "";
@@ -4703,7 +4708,7 @@ export async function startServer(options: {
           "",
           `- Decision file: \`${path}\``,
           `- Written up by: ${name} (@${login})`,
-          `- Source: ${options.publicUrl ?? url}/#${post}`,
+          `- Source: ${source}`,
           `- Objection window: ${windowName(window)}`,
         ].join("\n"),
       });
@@ -4824,7 +4829,12 @@ export async function startServer(options: {
         files: [
           {
             path: row.path,
-            content: decisionFile(number, row.post, JSON.parse(row.deciders), fields),
+            content: decisionFile(
+              number,
+              postLink(row.post, decisionRepo(id) as string),
+              JSON.parse(row.deciders),
+              fields,
+            ),
           },
         ],
       });
@@ -6030,7 +6040,7 @@ export async function startServer(options: {
         const labels: string[] = JSON.parse(row.labels ?? "[]");
         if (resolved || row.importance !== "discuss") continue;
         // Link to the first forum where the post is visible. If forums change later, the issue's text stays as is.
-        const link = `${options.publicUrl ?? url}/#${view.post.forums[0] ?? ALERTS}/${row.message}`;
+        const link = `${options.publicUrl ?? url}/channels/${ownerOf(repo)}/${view.post.forums[0] ?? ALERTS}/${row.message}`;
         const title = issueTitle(alert);
         const opened = (
           await answered((token) =>
