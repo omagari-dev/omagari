@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { clearLimit, useLimit } from "./api.ts";
 import { t } from "./i18n.ts";
 
-const DOCS = "https://omagari-dev.github.io/omagari";
+const DOCS = "https://omagari.org";
 const TROUBLESHOOTING = `${DOCS}/setup#troubleshooting`;
 /** The landing page's "What leaves your computer" section (#429). */
 const WHAT_GOES = `${DOCS}/#what-leaves-your-computer`;
