@@ -22,6 +22,7 @@ import {
   Search,
 } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useReducer, useState } from "react";
+import { link } from "./api.ts";
 import { fullTime, timeOf } from "./conversation.tsx";
 import { useMenu } from "./dm.tsx";
 import { ago, t } from "./i18n.ts";
@@ -190,7 +191,7 @@ export const ForumTitle = ({ forum, solo = false }: { forum: Channel; solo?: boo
  * Forum (DESIGN.md "Conflict forum"): search box, "Sort and view" menu and filter row, post list or cards. No input box.
  * A forum is a view filtered by labels (ADR-0039). A filter edited in the filter row is seen only by me until saved (mockup 53-D).
  * If `forum` is "Other posts", it shows posts that fit no forum and has no label filter.
- * A post row links to `#forum/alert number`, so it opens in a side panel and Back closes it.
+ * A post row links to the forum path with its alert number, so it opens in a side panel and Back closes it.
  * Search scans people, branches, files, symbols, and labels. Status (open, resolved) lives only on this screen and starts as open.
  */
 export function Forum({
@@ -420,7 +421,7 @@ function PostRow({
   return (
     <a
       className="forum-post"
-      href={`#${forum}/${post.alert}`}
+      href={link(forum, post.alert)}
       aria-current={selected ? "true" : undefined}
       data-resolved={resolved || undefined}
     >

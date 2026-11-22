@@ -16,7 +16,7 @@ import {
   Search,
 } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useId, useState } from "react";
-import { repoName, type Workspace as Space } from "./api.ts";
+import { link, repoName, type Workspace as Space } from "./api.ts";
 import { ConfirmDelete } from "./confirm-delete.tsx";
 import { useMenu } from "./dm.tsx";
 import { OTHER, type PostItem, postTitle, settled } from "./forum.tsx";
@@ -78,7 +78,7 @@ function useFolded() {
  * "Forum channels" (mock 55-D): under each forum row hang only the open posts that involve me (`mine`) as branches. A post that fits several forums hangs under each of them.
  * A forum with my posts folds with the chevron at the end of its row; folded, it keeps the count and the new-post dot. Settled posts drop out, and a post with new activity gets bold text and a dot.
  * With `other`, an "Other posts" row for posts that fit no forum sits after a divider below the forums. `+` creates a forum.
- * Channel rows are links that change `#channel id` in the address, so they open in a new tab and Back returns to the previous channel. A branch is `#forum id/alert number`.
+ * Channel rows are links that change the channel id in the address, so they open in a new tab and Back returns to the previous channel. A branch adds its alert number.
  * Even when folded, the currently selected row stays.
  */
 export function ChannelList({
@@ -124,7 +124,7 @@ export function ChannelList({
       <li key={channel.id}>
         <a
           className="nav-item"
-          href={`#${channel.id}`}
+          href={link(channel.id)}
           aria-current={channel.id === current ? "page" : undefined}
           onClick={onPick}
         >
@@ -146,7 +146,7 @@ export function ChannelList({
           <div className="forum-row">
             <a
               className="nav-item"
-              href={`#${channel.id}`}
+              href={link(channel.id)}
               aria-current={channel.id === current && post === undefined ? "page" : undefined}
               onClick={onPick}
             >
@@ -183,7 +183,7 @@ export function ChannelList({
                 <li key={item.alert}>
                   <a
                     className="branch-item"
-                    href={`#${channel.id}/${item.alert}`}
+                    href={link(channel.id, item.alert)}
                     aria-current={
                       item.alert === post && channel.id === current ? "page" : undefined
                     }
@@ -229,7 +229,7 @@ export function ChannelList({
             <li className="other-posts">
               <a
                 className="nav-item"
-                href={`#${OTHER.id}`}
+                href={link(OTHER.id)}
                 aria-current={current === OTHER.id && post === undefined ? "page" : undefined}
                 onClick={onPick}
               >

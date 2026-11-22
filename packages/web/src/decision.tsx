@@ -561,7 +561,7 @@ export function DecisionDialog({
             </p>
             <p>
               <strong>{t.decision.dialog.source}</strong>
-              <a href={`${location.pathname}${location.hash}`}>{title}</a>
+              <a href={location.pathname}>{title}</a>
             </p>
           </div>
         )}
