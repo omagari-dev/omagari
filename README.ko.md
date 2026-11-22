@@ -72,9 +72,11 @@ Node.js 24.12 이상, 이 기기에서 로그인한 Claude Code나 Codex, 워크
 - **직접 띄우기**: [서버를 띄우고](https://omagari.org/server) 그 주소를 `setup`에 넘겨요: `omagari setup https://<팀의 서버>`.
 
 ```bash
-npm i -g omagari
+npm i -g omagari@next
 omagari setup
 ```
+
+첫 릴리즈 전에는 최신 `dev` 빌드인 `omagari@next`를 깔아요. 릴리즈 뒤에는 그냥 `npm i -g omagari`로 깔면 돼요.
 
 `setup`이 GitHub로 로그인하고, 서버 주소를 저장하고(다른 주소를 넘기지 않으면 베타 서버예요: `omagari setup https://<팀의 서버>`), 이 기기의 에이전트에 훅을 깔고, 로그인할 때 켜지는 백그라운드 러너를 등록해요. 기기마다 한 번이에요. Codex는 Codex에서 `/hooks`를 열어 Omagari 훅 둘을 신뢰해야 돌아요.
 
