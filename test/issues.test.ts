@@ -95,7 +95,7 @@ test("a post gets a kind label, and one Discuss post is one GitHub issue: messag
   assert.equal(issue.title, "refund Contract change");
   assert.deepEqual(issue.labels, ["Contract change"]);
   // The issue's link is that post in the first forum where the post is visible ("Discuss").
-  assert.match(issue.body, new RegExp(`/#${post.forums[0]}/${post.alert}$`));
+  assert.match(issue.body, new RegExp(`/channels/omagari-test/${post.forums[0]}/${post.alert}$`));
   assert.deepEqual(post.issue, {
     number: issue.number,
     url: `https://github.com/omagari-test/space/issues/${issue.number}`,
