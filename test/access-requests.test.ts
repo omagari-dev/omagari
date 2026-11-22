@@ -165,3 +165,44 @@ test("with no operators the server takes no requests and OMAGARI_REPO works as b
   await assert.rejects(call(world.owner, api.accessRequests), refused("forbidden"));
   assert.equal((await call(world.owner, api.me)).operator, false);
 });
+
+test("a new request reaches an operator's open web live, and never a non-operator's", async (t) => {
+  const world = await startWorld({ operators: ["Owner"] });
+  t.after(world.stop);
+  world.github.admin("carol", REPO3);
+  world.github.grant("carol", REPO3);
+  const carol = await world.login("carol");
+  const bob = await world.login("bob");
+
+  const operator = await world.live(world.owner);
+  const member = await world.live(bob);
+  const access = (live: typeof operator) => live.received.filter((m) => m.kind === "access");
+  // After welcome the operator gets the (empty) waiting list at once.
+  await eventually(() => assert.equal(access(operator).length, 1));
+  assert.deepEqual(access(operator)[0]?.payload, { requests: [] });
+
+  await call(carol, api.requestAccess, { account: "other-team", agree: true });
+  await eventually(() => assert.equal(access(operator).length, 2));
+  const second = access(operator)[1];
+  assert.ok(second);
+  const { requests, added } = second.payload as {
+    requests: { id: number; account: string; login: string }[];
+    added?: { account: string; login: string };
+  };
+  assert.deepEqual(
+    requests.map(({ account, login }) => ({ account, login })),
+    [{ account: "other-team", login: "carol" }],
+  );
+  assert.equal(added?.login, "carol");
+
+  // The same request again is no news. Deciding updates the list with no `added`.
+  await call(carol, api.requestAccess, { account: "other-team", agree: true });
+  await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: false });
+  await eventually(() => assert.equal(access(operator).length, 3));
+  assert.deepEqual(access(operator)[2]?.payload, { requests: [] });
+
+  // A member who isn't an operator heard nothing.
+  assert.equal(access(member).length, 0);
+  await operator.close();
+  await member.close();
+});

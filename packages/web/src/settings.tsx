@@ -9,6 +9,7 @@ import {
   type Label,
   Language,
   type MemberView,
+  type PendingAccess,
   type Prefs,
 } from "@omagari/contract";
 import {
@@ -77,6 +78,8 @@ export function Settings({
   adminAll,
   onDeleteAccount,
   onDeleteWorkspace,
+  waiting,
+  toAccess,
   onClose,
 }: {
   me: Me;
@@ -86,6 +89,10 @@ export function Settings({
   adminAll: boolean;
   onDeleteAccount: () => Promise<void>;
   onDeleteWorkspace: () => Promise<void>;
+  /** The waiting access requests, live (operators only). */
+  waiting?: PendingAccess[];
+  /** Open on Access requests. */
+  toAccess?: boolean;
   posts?: PostItem[];
   mine?: MemberView;
   session: string;
@@ -100,7 +107,7 @@ export function Settings({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useId();
-  const [page, setPage] = useState<Page>("agent");
+  const [page, setPage] = useState<Page>(toAccess && me.operator ? "access" : "agent");
   const [settings, setSettings] = useState<Reply>();
   const [failed, setFailed] = useState(false);
   const [saveError, setSaveError] = useState<string>();
@@ -201,6 +208,15 @@ export function Settings({
     >
       {icon}
       {name}
+      {id === "access" && !!waiting?.length && (
+        <span
+          className="count-pill"
+          role="img"
+          aria-label={t.settings.access.waiting(waiting.length)}
+        >
+          {waiting.length}
+        </span>
+      )}
     </button>
   );
   const pageName = items.find(([id]) => id === page)?.[1];
@@ -210,7 +226,7 @@ export function Settings({
     body = <OverviewPage session={session} check={check} />;
   } else if (page === "access") {
     // Server-wide, not part of the workspace's settings read.
-    body = <AccessRequestsPage session={session} check={check} />;
+    body = <AccessRequestsPage session={session} check={check} live={waiting} />;
   } else if (page === "labels") {
     // Labels use a live list, separate from the settings read.
     body = <LabelsPage posts={posts} session={session} check={check} />;

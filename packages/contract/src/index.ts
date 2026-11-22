@@ -2645,6 +2645,11 @@ export const serverToWeb = {
   }),
   /** My personal settings changed (`api.setPrefs`). Goes only to my own connections. */
   prefs: Prefs,
+  /**
+   * The waiting access requests (same as `api.accessRequests`), oldest first. Goes only to operators' connections: once after welcome, and after that every time
+   * a request arrives or one is decided. `added` is the request that just arrived (not set after welcome or a decision), which the web turns into a notification.
+   */
+  access: z.strictObject({ requests: z.array(PendingAccess), added: PendingAccess.optional() }),
   error: ContractError,
 } satisfies Payloads;
 

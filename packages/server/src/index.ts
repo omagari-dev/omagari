@@ -63,6 +63,7 @@ import {
   type MergeCheckState,
   type Message,
   type ObservedFile,
+  type PendingAccess,
   type Post,
   PRESENCE_DURATIONS,
   type Prefs,
@@ -3744,6 +3745,12 @@ export async function startServer(options: {
         name: string | null;
       }[]
     ).map((row) => ({ ...row, name: row.name ?? row.login, at: new Date(row.at).toISOString() }));
+  /** Tells the operators' open webs the waiting requests; `added` is a request that just arrived. */
+  const tellOperators = (added?: PendingAccess) => {
+    const frame = encode(serverToWeb, "access", { requests: pendingAccess(), added });
+    for (const [socket, watcher] of watchers)
+      if (isOperator(watcher.login) && open(socket, watcher)) socket.send(frame);
+  };
   const mustOperate = (login: string) => {
     if (!isOperator(login))
       throw new ContractFailure({
@@ -3773,10 +3780,14 @@ export async function startServer(options: {
           "SELECT 1 FROM access_requests WHERE login = ? AND account = ? AND state = 'pending'",
         )
         .get(login, wanted)
-    )
-      db.prepare(
-        "INSERT INTO access_requests (account, login, state, at) VALUES (?, ?, 'pending', ?)",
-      ).run(wanted, login, Date.now());
+    ) {
+      const { lastInsertRowid } = db
+        .prepare(
+          "INSERT INTO access_requests (account, login, state, at) VALUES (?, ?, 'pending', ?)",
+        )
+        .run(wanted, login, Date.now());
+      tellOperators(pendingAccess().find((row) => row.id === Number(lastInsertRowid)));
+    }
     return accessStatus(login);
   });
 
@@ -3833,6 +3844,7 @@ export async function startServer(options: {
       "UPDATE access_requests SET state = ?, decided_by = ?, decided_at = ? WHERE id = ?",
     ).run(approve ? "approved" : "denied", login, Date.now(), id);
     if (approve) accounts.add(row.account);
+    tellOperators();
     return { requests: pendingAccess() };
   });
 
@@ -5416,6 +5428,8 @@ export async function startServer(options: {
         }
         watchers.set(socket, { hash: hash(payload.session), login, repo, workspace });
         greet(socket);
+        if (isOperator(login))
+          socket.send(encode(serverToWeb, "access", { requests: pendingAccess() }));
         visit(login, workspace);
         shareMembers(socket);
       },
