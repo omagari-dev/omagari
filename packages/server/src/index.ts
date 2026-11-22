@@ -3785,6 +3785,42 @@ export async function startServer(options: {
     return { requests: pendingAccess() };
   });
 
+  mount(app, api.operatorOverview, (_, c) => {
+    mustOperate(c.get("login") as string);
+    const n = (sql: string, ...args: number[]) => (db.prepare(sql).get(...args) as { n: number }).n;
+    const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const state = (s: string) =>
+      n(`SELECT COUNT(*) AS n FROM access_requests WHERE state = '${s}'`);
+    const people = (sql: string, last7: string | null) => ({
+      total: n(`SELECT COUNT(DISTINCT login) AS n FROM (${sql})`),
+      last7: last7 === null ? null : n(`SELECT COUNT(DISTINCT login) AS n FROM (${last7})`, since),
+    });
+    const added = (table: string) => ({
+      total: n(`SELECT COUNT(*) AS n FROM ${table}`),
+      last7: n(`SELECT COUNT(*) AS n FROM ${table} WHERE at >= ?`, since),
+    });
+    return {
+      requests: {
+        pending: state("pending"),
+        approved: state("approved"),
+        denied: state("denied"),
+        last7: n("SELECT COUNT(*) AS n FROM access_requests WHERE at >= ?", since),
+      },
+      steps: {
+        signedIn: people("SELECT login FROM access", null),
+        runner: people("SELECT login FROM runner_seen", null),
+        shared: people("SELECT login FROM shares", null),
+        // Who changed a work or wrote a status line in the last 7 days; the all-time count is everyone who has one.
+        work: people(
+          "SELECT login FROM works UNION SELECT login FROM lines",
+          "SELECT login FROM works WHERE changed >= ?1 UNION SELECT login FROM lines WHERE at >= ?1",
+        ),
+      },
+      workspaces: added("workspaces"),
+      repos: added("repos"),
+    };
+  });
+
   mount(app, api.decideAccess, ({ id, approve }, c) => {
     const login = c.get("login") as string;
     mustOperate(login);

@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 70;
+export const CONTRACT_VERSION = 71;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -1801,6 +1801,30 @@ export type AccessRequest = z.output<typeof AccessRequest>;
 export const PendingAccess = AccessRequest.extend({ login: z.string(), name: z.string() });
 export type PendingAccess = z.output<typeof PendingAccess>;
 
+/**
+ * What an operator sees on the Overview page: counts from what the server already stores, nothing tracked for it.
+ * `last7` is the number in the last 7 days where the server keeps a time for it, and null where it doesn't.
+ */
+export const OperatorOverview = z.strictObject({
+  /** Access requests by state. `last7` counts the ones made in the last 7 days. */
+  requests: z.strictObject({
+    pending: z.number().int(),
+    approved: z.number().int(),
+    denied: z.number().int(),
+    last7: z.number().int(),
+  }),
+  /** The steps after approval, each counted in people: signed in and can see a repo, runner connected once, shared a repo, work showed up (a work or a status line). */
+  steps: z.strictObject({
+    signedIn: z.strictObject({ total: z.number().int(), last7: z.number().int().nullable() }),
+    runner: z.strictObject({ total: z.number().int(), last7: z.number().int().nullable() }),
+    shared: z.strictObject({ total: z.number().int(), last7: z.number().int().nullable() }),
+    work: z.strictObject({ total: z.number().int(), last7: z.number().int().nullable() }),
+  }),
+  workspaces: z.strictObject({ total: z.number().int(), last7: z.number().int() }),
+  repos: z.strictObject({ total: z.number().int(), last7: z.number().int() }),
+});
+export type OperatorOverview = z.output<typeof OperatorOverview>;
+
 /** `api.myAccess`: whether the server takes requests, its legal text links, and the caller's requests, newest first. */
 export const AccessStatus = z.strictObject({
   open: z.boolean(),
@@ -1975,6 +1999,12 @@ export const api = {
     method: "GET",
     path: "/api/access/pending",
     response: z.strictObject({ requests: z.array(PendingAccess) }),
+  },
+  /** The sign-up numbers for operators (Settings → Server → Overview). `forbidden` for anyone who isn't an operator. */
+  operatorOverview: {
+    method: "GET",
+    path: "/api/access/overview",
+    response: OperatorOverview,
   },
   /**
    * An operator approves or denies a waiting request. An approved account joins the accepted accounts right away and stays after restarts.
