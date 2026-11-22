@@ -32,7 +32,7 @@ Without an address, `setup` uses the one already saved on this machine, or `OMAG
 
 Running `setup` again is safe: with the same address and session nothing changes, and a new address switches to it (signing in again if that server has no session yet). For Codex, open `/hooks` in Codex and trust the two Omagari hooks, or they won't run. Codex has no way to trust them in advance, so `setup` ends by saying so.
 
-The web shows the same two lines with your address filled in ("Connect your computer"). You can also paste them to your agent and ask it to run them.
+The web shows the same two lines with your address filled in ("Getting started"). You can also paste them to your agent and ask it to run them.
 
 ## The background runner
 
@@ -50,6 +50,16 @@ To take Omagari off this machine:
 omagari uninstall              # removes the hooks, the skill, and the background runner
 omagari uninstall --sign-out   # also ends this server's session and forgets it
 ```
+
+## Troubleshooting
+
+The web's "Getting started" links here.
+
+- **`command not found: omagari`**: open a new terminal first. If it's still there, the folder where npm puts global programs isn't on your PATH. `npm prefix -g` shows it; add its `bin` folder to your shell config and open a new terminal.
+- **`EACCES` when installing**: npm can't write to a folder owned by root. Don't use `sudo`. Install Node with a version manager like [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm), which keeps global programs in your home folder, then run `npm i -g omagari` again.
+- **`node -v` says below 24.12**: Omagari needs Node.js 24.12 or later. Install a newer Node (with nvm: `nvm install 24`), then run `omagari setup` again, because the hook commands contain the Node path.
+
+Still stuck? Open an issue on [GitHub](https://github.com/omagari-dev/omagari/issues) with what you ran and what it printed.
 
 ## Windows
 

@@ -1954,16 +1954,28 @@ One window holds both personal settings and workspace settings, as two groups in
   - **`app-banner-warning`** warning: "The Codex runner is off · View settings"
   - **`app-banner-error`** error (`role="alert"`): "Couldn't send the message · Try again"
 
-#### Connect your computer
+#### Getting started
 
-Shown until this member's runner has connected to the server once (`api.me` `connected`, #354). @Pancheble picked a card above the conversation (2026-11-20), not a dialog or an empty-state screen.
+A first-time member's checklist (#433). @Pancheble picked board 122-AB on 2026-11-23, with 121 (done and hidden) and 123 (phone). It grew from the "Connect your computer" card (#354), which it replaces. Each step checks itself off from what the server already knows; nothing tracks clicks. It's on while `Prefs.guide` is true, so Skip and Hide follow the person to their other devices.
 
-- **`app-connect-card`** Right under the channel header band, in the banner's spot and width. 1px `{colors.hairline}` border, `{rounded.md}`, padding 14px 16px. It doesn't collapse. It goes away on its own once a runner connects.
-  - Title "Connect your computer" (컴퓨터 연결하기) (15px/600), then a 13px secondary line.
-  - Two rows. Each has a 12px secondary label and an `app-code-block` (parchment, mono 13px) with the command and an outline `app-button` with a 16px Lucide `copy` ("Copy" (복사), then `check` "Copied" (복사했어요) for 2 seconds). The commands are `npm i -g omagari` and `omagari setup <this server's address>`. The address is the one the page was loaded from.
-  - A 12px secondary line for Codex: "Using Codex? Trust the Omagari hooks in /hooks."
-  - On narrow screens (833px and below) the copy button drops under its command, right-aligned.
-- **Share notice** In a repo the member hasn't shared (ADR-0049), an `app-banner-info` with "You haven't shared this repo yet, so your teammates can't see your work in it." and an underlined "Share" action on the right. It doesn't show on "All". If sharing fails it turns into `app-banner-error` with "Couldn't share that. Try again in a bit?" and the same action.
+- **`app-guide-card`** Right under the channel header band, in the banner's spot and width, from the first visit. 1px `{colors.hairline}` border, `{rounded.md}`, padding 14px 16px, at most 60% of the window tall (it scrolls inside).
+  - Head: "Getting started" (시작하기) (15px/600), "1/4" (13px secondary), and a "Hide" (숨기기) text button on the right.
+  - A 13px secondary line: "You need: Node.js 24.12 or later · Claude Code or Codex, signed in · a GitHub repo you can push to". Not on a phone.
+  - Four steps, each a 20px circle (number; the next one in `{colors.primary}`; done is a filled check) and a 14px/600 name, split by `{colors.divider}`. Only the next step shows what to do:
+    1. **Log in** (로그인): always done.
+    2. **Connect your computer** (컴퓨터 연결하기): the two command rows (12px secondary label, `app-code-block`, outline `app-button` "Copy" (복사), then "Copied" (복사했어요) for 2 seconds): `npm i -g omagari` and `omagari setup <this server's address>`. Then 12px secondary lines: what setup does and `omagari uninstall`; you can paste the two lines to your agent; the Codex `/hooks` line. A folded "Stuck?" (막혔나요?) lists `command not found: omagari`, `EACCES`, and `node -v` below 24.12, and links to Troubleshooting in the set-up docs. Done once this member's runner has connected once (`api.me` `connected`); then a green-tinted line "Connected · Claude Code, Codex" (연결됐어요 · …) names the executors the runner reported, in place of the commands.
+    3. **Share your repo** (레포 공유하기): "Open Claude Code in the repo folder and press Share. From a terminal: `omagari share on`" and a "What goes to the server?" (무엇이 서버로 가요?) link to the landing page's "What leaves your computer". Done once this member shares any repo.
+    4. **See your work** (내 작업 보기): "You're done once your status line shows in the member list." Done once one of my works has a status line.
+  - **Invite teammates** (팀원 부르기): "Send them this address. Anyone with push access to the repo gets in, no invite needed." and an outline "Copy address" (주소 복사).
+  - A folded "This is what it looks like when it works" (잘 돌아가면 이렇게 보여요): a status line card and an indirect conflict card.
+  - **Phone** (833px and below, board 123): step 2 is "Do this on a computer" (이건 컴퓨터에서 해요), "Open app.omagari.org on your computer and pick up here.", and "Copy address".
+- **`app-guide-button`** At the bottom of the channel panel, right above the profile panel: "Getting started" and "1/4", a 4px progress bar, and 12px secondary "Next: Connect your computer". 1px hairline, `{rounded.md}`. The card and the button always show the same step.
+- **Popup** (`{component.app-dialog}`, 560px wide). It opens only when the button is pressed; nothing pops up by itself.
+  - Before connecting: "Welcome!" (환영해요!), a line on what four steps get you, the progress bar, "Next: Connect your computer · Two lines in a terminal, about 2 minutes", the "You need" line, and "Skip" (건너뛰기, quiet) / "Start" (시작하기).
+  - After connecting: "Getting started", the bar, the "Connected" line, "Next: Share your repo" with what to do, and "Later" (나중에, quiet) / "Got it" (알겠어요).
+- **Done** (board 121): when all four are done, the card turns into one line: a filled check, "You're all set!" (다 됐어요!) and "When your work clashes with a teammate's, you'll hear about it here. Send your teammates this address.", "Copy address", and "Close". It shows once: the guide turns itself off, and the button goes away.
+- **Skip and Hide** fold the card and the button. The profile menu then has "Getting started" (시작하기 다시 보기) under Settings, which brings them back.
+- **Share notice** In a repo the member hasn't shared (ADR-0049), unless the guide's share step is the one to do, an `app-banner-info` with "You haven't shared this repo yet, so your teammates can't see your work in it." and an underlined "Share" action on the right. It doesn't show on "All". If sharing fails it turns into `app-banner-error` with "Couldn't share that. Try again in a bit?" and the same action.
 
 #### Floating layers
 

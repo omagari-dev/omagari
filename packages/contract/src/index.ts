@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 69;
+export const CONTRACT_VERSION = 70;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -527,6 +527,8 @@ export const Prefs = z.strictObject({
   notifyDecisions: z.boolean(),
   /** A reply to my message (with its `@` on), or a new message in a thread I started or wrote in (#370). */
   notifyReplies: z.boolean(),
+  /** Show the "Getting started" checklist and its sidebar button (#433). Skip, Hide, and "You're all set" turn it off; the profile menu's "Getting started" turns it back on. */
+  guide: z.boolean(),
 });
 export type Prefs = z.infer<typeof Prefs>;
 export const DEFAULT_PREFS: Prefs = {
@@ -537,6 +539,7 @@ export const DEFAULT_PREFS: Prefs = {
   notifyAnswers: true,
   notifyDecisions: true,
   notifyReplies: true,
+  guide: true,
 };
 export const IMPORTANCE_LABELS = {
   reference: "FYI",

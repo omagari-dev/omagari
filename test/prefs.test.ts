@@ -100,3 +100,15 @@ test("picking dark reaches the same member's other connections and keeps the lan
     (error: ContractFailure) => error.code === "invalid_request",
   );
 });
+
+test("hiding Getting started follows the member to another device, and showing it again does too (#433)", async (t) => {
+  const world = await startWorld();
+  t.after(world.stop);
+  const owner = world.owner;
+  assert.equal((await call(owner, api.me)).prefs.guide, true);
+  await call(owner, api.setPrefs, { guide: false });
+  const otherDevice = await world.login(owner.login);
+  assert.equal((await call(otherDevice, api.me)).prefs.guide, false);
+  await call(otherDevice, api.setPrefs, { guide: true });
+  assert.equal((await call(owner, api.me)).prefs.guide, true);
+});

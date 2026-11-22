@@ -71,7 +71,16 @@ import {
   RepoDialog,
   useCollapsed,
 } from "./channels.tsx";
-import { ConnectCard, LimitNotice, ShareNotice } from "./connect.tsx";
+import {
+  AllSet,
+  GettingStarted,
+  type Guide,
+  GuideButton,
+  GuideDialog,
+  LimitNotice,
+  progressOf,
+  ShareNotice,
+} from "./connect.tsx";
 import { ChannelTitle, Conversation, type ReplyBody, type View } from "./conversation.tsx";
 import { DEBATE_STRIP, DebateDialog, DebateLog, DebateStrip, ProxyDialog } from "./debate.tsx";
 import { DecisionDialog, type Fields } from "./decision.tsx";
@@ -249,6 +258,10 @@ export function Workspace({
   /** Has my runner ever connected, and which repos have I shared (#354). Read again on every connect and when the member list changes. */
   const [setup, setSetup] = useState({ connected: me.connected, shared: me.shared });
   const [shareFailed, setShareFailed] = useState(false);
+  /** The "Getting started" popup is open. Only pressing the sidebar button opens it (#433). */
+  const [guiding, setGuiding] = useState(false);
+  /** All four steps just got done: "You're all set" shows until closed, and the guide is turned off for next time. */
+  const [allSet, setAllSet] = useState(false);
   /** Browser notifications (#313): the message number when this tab first connected, the Q&As seen waiting, and the notifications already shown. */
   const since = useRef<number>(undefined);
   const asking = useRef(new Set<number>());
@@ -269,6 +282,32 @@ export function Workspace({
   /** The last four fields sent as a decision PR from this browser. The contract has no Decision body, so this fills in the fields when editing and resending. */
   const submitted = useRef<Record<number, Fields>>({});
   const wide = useMedia(WIDE);
+  /** Saves some of my settings, showing them right away and going back if the server says no. */
+  const savePrefs = async (next: Partial<Prefs>) => {
+    const before = prefs;
+    setPrefs({ ...prefs, ...next });
+    try {
+      setPrefs(await call(server(session), api.setPrefs, next));
+    } catch (error) {
+      setPrefs(before);
+      throw error;
+    }
+  };
+  const myRow = members?.find((member) => member.login === me.login);
+  const guide: Guide = {
+    connected: setup.connected,
+    shared: setup.shared.length > 0,
+    working: !!myRow?.works.some((work) => work.line),
+    executors: myRow?.agents.map((agent) => agent.executor) ?? [],
+  };
+  const guideDone = !!myRow && !progressOf(guide).next;
+  const guideShown = prefs.guide && !guideDone;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only when the steps finish while the guide is on
+  useEffect(() => {
+    if (!guideDone || !prefs.guide) return;
+    setAllSet(true);
+    savePrefs({ guide: false }).catch(() => {});
+  }, [guideDone, prefs.guide]);
 
   /** Whether the channel panel is folded. Only used at 834px and up; when the window narrows and widens again, it returns to what was remembered. */
   const [folded, toggleFolded] = useCollapsed("omagari.side-panel-folded");
@@ -982,6 +1021,18 @@ export function Workspace({
         drawer.current?.close();
         setSettings(true);
       }}
+      guideButton={
+        guideShown && (
+          <GuideButton
+            guide={guide}
+            onOpen={() => {
+              drawer.current?.close();
+              setGuiding(true);
+            }}
+          />
+        )
+      }
+      onGuide={prefs.guide ? undefined : () => void savePrefs({ guide: true }).catch(() => {})}
       onPresence={setPresence}
       onMessage={setMessage}
     >
@@ -1341,10 +1392,24 @@ export function Workspace({
                 </div>
               </header>
               <LimitNotice />
-              {!missing && !setup.connected && <ConnectCard address={server(session).url} />}
-              {!missing && here !== ALL && !setup.shared.includes(here) && (
-                <ShareNotice onShare={() => void share()} failed={shareFailed} />
+              {!missing && allSet && (
+                <AllSet address={server(session).url} onClose={() => setAllSet(false)} />
               )}
+              {!missing && guideShown && (
+                <GettingStarted
+                  address={server(session).url}
+                  guide={guide}
+                  phone={!wide}
+                  onHide={() => void savePrefs({ guide: false }).catch(() => {})}
+                />
+              )}
+              {/* While the guide's share step is the one to do, it says how; the notice is for repos added later. */}
+              {!missing &&
+                here !== ALL &&
+                !setup.shared.includes(here) &&
+                !(guideShown && !guide.shared) && (
+                  <ShareNotice onShare={() => void share()} failed={shareFailed} />
+                )}
               {missing ? (
                 <div className="empty">
                   <h2>{t.channels.frame.hiddenTitle}</h2>
@@ -1622,6 +1687,18 @@ export function Workspace({
                   onClose={() => setDebating(undefined)}
                 />
               )}
+            {guiding && (
+              <GuideDialog
+                address={server(session).url}
+                guide={guide}
+                phone={!wide}
+                onSkip={() => {
+                  setGuiding(false);
+                  void savePrefs({ guide: false }).catch(() => {});
+                }}
+                onClose={() => setGuiding(false)}
+              />
+            )}
             {settings && (
               <Settings
                 me={me}
@@ -1630,16 +1707,7 @@ export function Workspace({
                 session={session}
                 check={check}
                 prefs={prefs}
-                onPrefs={async (next) => {
-                  const before = prefs;
-                  setPrefs({ ...prefs, ...next });
-                  try {
-                    setPrefs(await call(server(session), api.setPrefs, next));
-                  } catch (error) {
-                    setPrefs(before);
-                    throw error;
-                  }
-                }}
+                onPrefs={savePrefs}
                 onDndOff={() => void setPresence("online").catch(() => {})}
                 space={space}
                 adminAll={(() => {
@@ -1765,6 +1833,8 @@ function ChannelPanel({
   mine,
   onLogout,
   onSettings,
+  guideButton,
+  onGuide,
   onPresence,
   onMessage,
   children,
@@ -1776,6 +1846,10 @@ function ChannelPanel({
   mine?: MemberView;
   onLogout: () => void;
   onSettings: () => void;
+  /** "Getting started" above the profile panel, while it's on (#433). */
+  guideButton: ReactNode;
+  /** Turns "Getting started" back on from the profile menu. Missing while it's on. */
+  onGuide?: () => void;
   onPresence: (presence: ChosenPresence, duration?: PresenceDuration) => Promise<void>;
   onMessage: (message: string, emoji: string | null) => Promise<void>;
   children: ReactNode;
@@ -1784,12 +1858,14 @@ function ChannelPanel({
     <>
       {head}
       {children}
+      {guideButton}
       <ProfilePanel
         me={me}
         mine={mine}
         solo={solo}
         onLogout={onLogout}
         onSettings={onSettings}
+        onGuide={onGuide}
         onPresence={onPresence}
         onMessage={onMessage}
       />
