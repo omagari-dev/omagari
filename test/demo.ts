@@ -136,8 +136,8 @@ const world = await startWorld({
   accept: [REPO, REPO3],
   // "me" is the operator, so settings show Server → Access requests (ADR-0052). A request from "yuna" is waiting there.
   operators: ["owner"],
-  terms: "https://omagari-dev.github.io/omagari/terms",
-  privacy: "https://omagari-dev.github.io/omagari/privacy",
+  terms: "https://omagari.org/terms",
+  privacy: "https://omagari.org/privacy",
   giphy: process.env.GIPHY_API_KEY || undefined,
   // Once everything pre-seeded is in, a device auth opened in the browser is approved as "me" instead of entering the code on GitHub.
   // Wrapped before the server starts, since the server keeps the GitHub calls it was given.

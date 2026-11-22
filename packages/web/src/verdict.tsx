@@ -5,7 +5,7 @@ import { ago, t } from "./i18n.ts";
 import { notRunWords } from "./verdict-words.ts";
 
 /** The docs page on the check command and the sandbox tools (site/merge-runs.md). */
-const DOCS = "https://omagari-dev.github.io/omagari/merge-runs";
+const DOCS = "https://omagari.org/merge-runs";
 const link = (href: string, text: string) => (
   <a href={href} target="_blank" rel="noreferrer">
     {text}

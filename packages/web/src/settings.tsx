@@ -54,7 +54,7 @@ type Page =
   | "access";
 
 /** The docs page on the check command and the sandbox tools (site/merge-runs.md). */
-const MERGE_RUN_DOCS = "https://omagari-dev.github.io/omagari/merge-runs";
+const MERGE_RUN_DOCS = "https://omagari.org/merge-runs";
 
 /**
  * Settings window (DESIGN.md "Settings window"). Pick an item in the left list and see its content on the right.
