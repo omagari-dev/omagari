@@ -5,11 +5,11 @@ The short version is in [Getting started](getting-started). This page has the de
 ## Install
 
 ```bash
-npm i -g omagari
+npm i -g omagari@next
 omagari --version
 ```
 
-You need Node.js 24.12 or later. The `omagari` package holds the CLI, the runner, and the hooks ([ADR-0048](https://github.com/omagari-dev/omagari/blob/dev/docs/adr/0048-publish-to-npm-latest-from-tags-next-from-dev.md)). Until the first release, `latest` isn't a real build yet. Use `npm i -g omagari@next`, which is the newest `dev` build.
+You need Node.js 24.12 or later. The `omagari` package holds the CLI, the runner, and the hooks ([ADR-0048](https://github.com/omagari-dev/omagari/blob/dev/docs/adr/0048-publish-to-npm-latest-from-tags-next-from-dev.md)). Until the first release, use `omagari@next`, the newest `dev` build. After it, plain `npm i -g omagari` gets the release.
 
 If you get `command not found`, the folder where npm puts global programs isn't on your PATH. `npm prefix -g` shows where it is. Add its `bin` folder to your shell config and open a new terminal. Agents call `omagari` from their hooks and the status line skill, so it has to be on the PATH of every shell.
 
@@ -56,7 +56,7 @@ omagari uninstall --sign-out   # also ends this server's session and forgets it
 The web's "Getting started" links here.
 
 - **`command not found: omagari`**: open a new terminal first. If it's still there, the folder where npm puts global programs isn't on your PATH. `npm prefix -g` shows it; add its `bin` folder to your shell config and open a new terminal.
-- **`EACCES` when installing**: npm can't write to a folder owned by root. Don't use `sudo`. Install Node with a version manager like [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm), which keeps global programs in your home folder, then run `npm i -g omagari` again.
+- **`EACCES` when installing**: npm can't write to a folder owned by root. Don't use `sudo`. Install Node with a version manager like [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm), which keeps global programs in your home folder, then run `npm i -g omagari@next` again.
 - **`node -v` says below 24.12**: Omagari needs Node.js 24.12 or later. Install a newer Node (with nvm: `nvm install 24`), then run `omagari setup` again, because the hook commands contain the Node path.
 
 Still stuck? Open an issue on [GitHub](https://github.com/omagari-dev/omagari/issues) with what you ran and what it printed.
@@ -83,7 +83,7 @@ A runner installed from npm updates itself. When the server's contract is newer 
 To update by hand:
 
 ```bash
-npm i -g omagari@latest   # or omagari@next
+npm i -g omagari@next   # after the first release: omagari@latest
 ```
 
 If you upgraded Node, or `omagari` moved, run `omagari setup` again, because the hook commands contain the Node and install paths.
