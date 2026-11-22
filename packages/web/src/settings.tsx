@@ -14,6 +14,7 @@ import {
 import {
   Bell,
   Bot,
+  ChartNoAxesColumn,
   CircleMinus,
   ExternalLink,
   GitMerge,
@@ -38,6 +39,7 @@ import { LANGUAGE_NAMES, language, setLanguage, t } from "./i18n.ts";
 import { ImportanceBadge, LabelDot, useLabels } from "./labels.tsx";
 import { Mark } from "./members.tsx";
 import { browserSwitch, setBrowserSwitch } from "./notify.ts";
+import { OverviewPage } from "./overview.tsx";
 import { appearance, setAppearance, systemLook, useLook } from "./theme.ts";
 import { Avatar, personName } from "./workspace.tsx";
 
@@ -51,7 +53,8 @@ type Page =
   | "alerts"
   | "labels"
   | "info"
-  | "access";
+  | "access"
+  | "overview";
 
 /** The docs page on the check command and the sandbox tools (site/merge-runs.md). */
 const MERGE_RUN_DOCS = "https://omagari.org/merge-runs";
@@ -182,6 +185,11 @@ export function Settings({
     ["labels", t.settings.pages.labels, <Tag key="labels" size={18} aria-hidden />],
     ["info", t.settings.pages.info, <Info key="info" size={18} aria-hidden />],
     ["access", t.settings.pages.access, <UserPlus key="access" size={18} aria-hidden />],
+    [
+      "overview",
+      t.settings.pages.overview,
+      <ChartNoAxesColumn key="overview" size={18} aria-hidden />,
+    ],
   ];
   const item = ([id, name, icon]: (typeof items)[number]) => (
     <button
@@ -198,7 +206,9 @@ export function Settings({
   const pageName = items.find(([id]) => id === page)?.[1];
 
   let body: ReactNode;
-  if (page === "access") {
+  if (page === "overview") {
+    body = <OverviewPage session={session} check={check} />;
+  } else if (page === "access") {
     // Server-wide, not part of the workspace's settings read.
     body = <AccessRequestsPage session={session} check={check} />;
   } else if (page === "labels") {
