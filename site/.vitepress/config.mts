@@ -14,6 +14,7 @@ export default defineConfig({
     nav: [
       { text: "Docs", link: "/what-is-omagari" },
       { text: "Releases", link: `${repo}/releases` },
+      { text: "Questions", link: `${repo}/discussions` },
       { text: "Status", link: "https://status.omagari.org" },
       { text: "GitHub", link: repo },
     ],
@@ -56,8 +57,7 @@ export default defineConfig({
     ],
     editLink: { pattern: `${repo}/edit/dev/site/:path`, text: "Edit this page on GitHub" },
     footer: {
-      message:
-        'AGPL-3.0 · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/ko/terms">이용약관</a> · <a href="/ko/privacy">개인정보 처리방침</a>',
+      message: `AGPL-3.0 · <a href="${repo}/discussions">Questions</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/ko/terms">이용약관</a> · <a href="/ko/privacy">개인정보 처리방침</a>`,
     },
   },
 });

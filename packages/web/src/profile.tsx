@@ -11,6 +11,9 @@ import { EmojiPalette, loadEmoji } from "./emoji.tsx";
 import { t } from "./i18n.ts";
 import { Avatar, Dot, personName } from "./workspace.tsx";
 
+/** The place to ask questions and leave feedback. Security reports go to SECURITY.md instead (#443). */
+const DISCUSSIONS = "https://github.com/omagari-dev/omagari/discussions";
+
 type SetPresence = (presence: ChosenPresence, duration?: PresenceDuration) => Promise<void>;
 type SetMessage = (message: string, emoji: string | null) => Promise<void>;
 
@@ -411,6 +414,15 @@ function StatusMenu({
           {t.profile.menu.guide}
         </button>
       )}
+      <a
+        className="menu-item"
+        href={DISCUSSIONS}
+        target="_blank"
+        rel="noreferrer"
+        onPointerEnter={() => setFlyout(undefined)}
+      >
+        {t.profile.menu.questions}
+      </a>
       <button type="button" className="menu-item danger" onClick={onLogout}>
         {t.profile.menu.logout}
       </button>
