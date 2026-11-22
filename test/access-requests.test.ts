@@ -183,7 +183,9 @@ test("a new request reaches an operator's open web live, and never a non-operato
 
   await call(carol, api.requestAccess, { account: "other-team", agree: true });
   await eventually(() => assert.equal(access(operator).length, 2));
-  const { requests, added } = access(operator)[1]?.payload as {
+  const second = access(operator)[1];
+  assert.ok(second);
+  const { requests, added } = second.payload as {
     requests: { id: number; account: string; login: string }[];
     added?: { account: string; login: string };
   };
