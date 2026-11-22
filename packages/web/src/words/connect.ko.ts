@@ -32,6 +32,8 @@ export const connectKo: Words["connect"] = {
     { code: "EACCES", fix: "sudo 말고, nvm이나 fnm으로 Node를 깔고 다시 해 봐요." },
     { code: "node -v", fix: "가 24.12보다 낮아요? Node를 새로 깔아요." },
   ],
+  ask: "그래도 막혔나요?",
+  askLink: "GitHub Discussions에 물어보세요",
   more: "그 밖에는?",
   troubleshooting: "문제 해결 문서 보기",
   connected: (executors) => (executors ? `연결됐어요 · ${executors}` : "연결됐어요"),

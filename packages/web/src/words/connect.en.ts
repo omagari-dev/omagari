@@ -33,6 +33,8 @@ export const connectEn = {
     { code: "EACCES", fix: "Don't use sudo. Install Node with nvm or fnm and try again." },
     { code: "node -v", fix: "says below 24.12? Install a newer Node." },
   ],
+  ask: "Still stuck?",
+  askLink: "Ask in GitHub Discussions",
   more: "Anything else?",
   troubleshooting: "See Troubleshooting",
   connected: (executors: string) => (executors ? `Connected · ${executors}` : "Connected"),

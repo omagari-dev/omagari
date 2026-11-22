@@ -157,7 +157,7 @@ Omagari는 무료예요. 팀에 도움이 되면 [GitHub Sponsors](https://githu
 
 ## 기여
 
-[CONTRIBUTING.md](CONTRIBUTING.md)를 먼저 읽어 주세요. 보안 문제는 [SECURITY.md](SECURITY.md)를 보세요. 함께하는 모두가 [행동 강령](CODE_OF_CONDUCT.md)을 따라요.
+질문과 제안은 [GitHub Discussions](https://github.com/omagari-dev/omagari/discussions)에 남겨 주세요. [CONTRIBUTING.md](CONTRIBUTING.md)를 먼저 읽어 주세요. 보안 문제는 Discussions가 아니라 비공개 신고로 보내 주세요([SECURITY.md](SECURITY.md)). 함께하는 모두가 [행동 강령](CODE_OF_CONDUCT.md)을 따라요.
 
 ## 라이선스
 

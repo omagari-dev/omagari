@@ -6,6 +6,7 @@ import { t } from "./i18n.ts";
 
 const DOCS = "https://omagari.org";
 const TROUBLESHOOTING = `${DOCS}/setup#troubleshooting`;
+const DISCUSSIONS = "https://github.com/omagari-dev/omagari/discussions";
 /** The landing page's "What leaves your computer" section (#429). */
 const WHAT_GOES = `${DOCS}/#what-leaves-your-computer`;
 
@@ -119,6 +120,12 @@ function StepBody({ step, address, phone }: { step: Step; address: string; phone
                 <code>{error.code}</code> {error.fix}
               </li>
             ))}
+            <li>
+              {t.connect.ask}{" "}
+              <a href={DISCUSSIONS} target="_blank" rel="noreferrer">
+                {t.connect.askLink}
+              </a>
+            </li>
             <li>
               {t.connect.more}{" "}
               <a href={TROUBLESHOOTING} target="_blank" rel="noreferrer">

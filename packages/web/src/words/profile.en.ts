@@ -31,6 +31,7 @@ export const profileEn = {
     presenceFailed: "Couldn't change your presence",
     settings: "Settings",
     guide: "Getting started",
+    questions: "Questions and feedback",
     logout: "Log out",
   },
   members: {

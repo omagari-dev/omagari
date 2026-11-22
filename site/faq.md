@@ -16,6 +16,10 @@ Claude Code and Codex, each on the owner's own login and usage.
 
 With the default share level (`full`), the content of the files you changed goes to your team's server, so teammates' runners can merge and check it. Pick `declared` (paths only) or `intent` (just your status line) with `omagari runner --share`. The choice is remembered per repo. See [Sharing a repo](workspaces#sharing-a-repo). On the hosted beta, that server is ours; see the [Privacy policy](privacy).
 
+## Where do I ask a question or leave feedback?
+
+In [GitHub Discussions](https://github.com/omagari-dev/omagari/discussions). It works like a forum: Q&A for "how do I…?", Ideas for feature requests, and General for everything else. Don't report security problems there. Use private vulnerability reporting instead; see [SECURITY.md](https://github.com/omagari-dev/omagari/blob/dev/SECURITY.md).
+
 ## Does it work on Windows?
 
 Run it inside WSL2, `omagari setup` included, and keep the repo in WSL2 too. See [Windows](setup#windows).

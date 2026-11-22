@@ -157,7 +157,7 @@ Omagari is free. If it helps your team, you can sponsor it on [GitHub Sponsors](
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) first. To report a security problem, see [SECURITY.md](SECURITY.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+Questions and ideas go to [GitHub Discussions](https://github.com/omagari-dev/omagari/discussions). Read [CONTRIBUTING.md](CONTRIBUTING.md) first. To report a security problem, use private reporting, not Discussions; see [SECURITY.md](SECURITY.md). Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

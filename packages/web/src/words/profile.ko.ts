@@ -31,6 +31,7 @@ export const profileKo: Words["profile"] = {
     presenceFailed: "접속 상태를 바꾸지 못했어요",
     settings: "설정",
     guide: "시작하기 다시 보기",
+    questions: "질문과 의견",
     logout: "로그아웃",
   },
   members: {
