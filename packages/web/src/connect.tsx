@@ -1,7 +1,7 @@
 import { EXECUTOR_NAMES, type ExecutorId } from "@omagari/contract";
 import { Check, Copy, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { clearLimit, useLimit } from "./api.ts";
+import { clearDemoNote, clearLimit, useDemoNote, useLimit } from "./api.ts";
 import { t } from "./i18n.ts";
 
 const DOCS = "https://omagari.org";
@@ -379,6 +379,36 @@ export function LimitNotice() {
       >
         <X size={16} aria-hidden />
       </button>
+    </div>
+  );
+}
+
+/**
+ * The static demo's note (ADR-0058): always there, so a visitor knows nothing leaves the tab.
+ * When something needs a real server or agent (asking an agent, merge runs, decision PRs, saving settings), it says so.
+ */
+export function DemoNotice() {
+  const needsServer = useDemoNote();
+  return (
+    <div
+      className={needsServer ? "banner warning connect-notice" : "banner info connect-notice"}
+      role="status"
+    >
+      {needsServer ? t.connect.demoNeedsServer : t.connect.demo}
+      <a className="banner-action" href="https://app.omagari.org">
+        {t.connect.openApp}
+      </a>
+      {needsServer && (
+        <button
+          type="button"
+          className="reply-stop limit-close"
+          aria-label={t.connect.closeLimit}
+          title={t.connect.closeLimit}
+          onClick={clearDemoNote}
+        >
+          <X size={16} aria-hidden />
+        </button>
+      )}
     </div>
   );
 }

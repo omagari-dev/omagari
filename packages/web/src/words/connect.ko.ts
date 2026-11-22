@@ -67,4 +67,7 @@ export const connectKo: Words["connect"] = {
       `이 워크스페이스가 저장 용량 ${max}MB를 넘었어요. 서버 운영자에게 물어봐 주세요.`,
   },
   closeLimit: "닫기",
+  demo: "데모예요. 여기서 한 건 이 탭에만 남고 새로 고치면 사라져요.",
+  demoNeedsServer: "그건 진짜 서버와 에이전트가 있어야 해서 데모에선 안 돼요.",
+  openApp: "앱 열기",
 };

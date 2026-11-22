@@ -73,6 +73,7 @@ import {
 } from "./channels.tsx";
 import {
   AllSet,
+  DemoNotice,
   GettingStarted,
   type Guide,
   GuideButton,
@@ -1391,6 +1392,7 @@ export function Workspace({
                   </button>
                 </div>
               </header>
+              {import.meta.env.MODE === "demo" && <DemoNotice />}
               <LimitNotice />
               {!missing && allSet && (
                 <AllSet address={server(session).url} onClose={() => setAllSet(false)} />

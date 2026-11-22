@@ -45,6 +45,24 @@ export const useLimit = () =>
     () => hit,
   );
 
+/** In the static demo (ADR-0058): something needed a real server, so the demo note says so until closed. */
+let demoNote = false;
+const demoListeners = new Set<() => void>();
+const setDemoNote = (on: boolean) => {
+  demoNote = on;
+  for (const listener of demoListeners) listener();
+};
+export const showDemoNote = () => setDemoNote(true);
+export const clearDemoNote = () => setDemoNote(false);
+export const useDemoNote = () =>
+  useSyncExternalStore(
+    (listener) => {
+      demoListeners.add(listener);
+      return () => demoListeners.delete(listener);
+    },
+    () => demoNote,
+  );
+
 /** The server the web calls. It serves the API from the same place as the screen (in development, Vite forwards it). */
 export const server = (session?: string, repo?: string) => ({
   url: location.origin,
