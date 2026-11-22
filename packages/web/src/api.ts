@@ -7,6 +7,7 @@ import {
   type ModelPick,
 } from "@omagari/contract";
 import { useSyncExternalStore } from "react";
+import { format, parse } from "./address.ts";
 
 export type Me = Awaited<ReturnType<typeof call<typeof api.me>>>;
 
@@ -22,6 +23,10 @@ let workspace: string | undefined;
 export const setWorkspace = (id: string) => {
   workspace = id;
 };
+
+/** The address of a channel (or a post in it) in the workspace picked now (ADR-0057). */
+export const link = (channel: string, post?: number, big?: boolean) =>
+  format({ workspace: workspace ?? "", channel, post, big: big || undefined });
 
 /** The last limit the server said was hit (ADR-0052), until the banner is closed. Every call goes through `server`, so any screen's hit lands here. */
 let hit: ContractError["limit"];
@@ -111,7 +116,16 @@ export function remember(key: string, value: string) {
 /** A repo name (the name in `owner/name`). */
 export const repoName = (repo: string) => repo.split("/")[1] ?? repo;
 
-/** The last place seen per workspace (a repo name or "All"), and the last channel seen per place (the `#…` in the address). Kept on this device. */
+/** The last place seen per workspace (a repo name or "All"), and the last channel seen per place (its path). Kept on this device. */
 export const placeKey = (workspace: string) => `omagari.place.${workspace}`;
 export const lastKey = (workspace: string, place: string) =>
   `omagari.last-channel.${workspace}.${place}`;
+
+/** The path of the last channel seen in a place. One kept before paths (`#…`) is read in that workspace. */
+export function lastPath(workspace: string, place: string) {
+  const saved = remembered(lastKey(workspace, place));
+  const at = saved ? parse(saved) : undefined;
+  return typeof at === "object" && at.channel
+    ? format({ ...at, workspace: at.workspace ?? workspace })
+    : undefined;
+}

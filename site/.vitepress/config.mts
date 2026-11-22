@@ -5,7 +5,7 @@ const repo = "https://github.com/omagari-dev/omagari";
 export default defineConfig({
   title: "Omagari",
   description: "Your team's agents, in one place.",
-  base: "/omagari/",
+  base: "/",
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {

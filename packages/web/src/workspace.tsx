@@ -47,8 +47,11 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { format, go, useAddress } from "./address.ts";
 import {
   lastKey,
+  lastPath,
+  link,
   type Me,
   placeKey,
   remember,
@@ -164,17 +167,6 @@ const upsert = (qas: Qa[], qa: Qa) => {
   if (known && known.answer.state !== "pending" && qa.answer.state === "pending") return qas;
   return [...qas.filter((other) => other.id !== qa.id), qa].sort((x, y) => x.id - y.id);
 };
-
-/** `#channel id` in the address. Channel rows are links, so picking one changes it, and so does Back. */
-function useHash() {
-  const [hash, setHash] = useState(() => decodeURIComponent(location.hash.slice(1)));
-  useEffect(() => {
-    const changed = () => setHash(decodeURIComponent(location.hash.slice(1)));
-    addEventListener("hashchange", changed);
-    return () => removeEventListener("hashchange", changed);
-  }, []);
-  return hash;
-}
 
 /**
  * App frame: the channel panel on the left, the conversation in the middle, the right column. The right column holds only one of the member list (#19) and my agent (#21).
@@ -405,7 +397,8 @@ export function Workspace({
    */
   const toggleRight = (panel: "members" | "agent" | "profile") => {
     if (asidePost && openPost) {
-      location.hash = `${current?.id}${panel === "agent" ? `/${openPost.alert}/big` : ""}`;
+      if (panel === "agent") to(current?.id, openPost.alert, true);
+      else to(current?.id);
       return setRight(panel);
     }
     return right === panel ? closeRight() : setRight(panel);
@@ -427,12 +420,20 @@ export function Workspace({
   const [picks, setPicks] = useState<Picks>(() => savedPicks(me.login));
   /** The conversation per channel, already loaded. Missing for channels never opened; past messages are read the first time it opens. */
   const [views, setViews] = useState<Record<string, View>>({});
-  /** The address is `#channel id`; a forum post is `#forum id/alert number` (side column), and the big view is `#forum id/alert number/big`. */
-  const hash = useHash();
-  const [hashChannel, hashPost, hashSize] = hash.split("/");
+  /**
+   * The address (ADR-0057): a channel, a forum post in the side column, or a post in the big view. Channel rows are links, so picking one changes it, and so does Back.
+   * An address in a workspace I'm not in is "not visible", like a channel I can't see.
+   */
+  const at = useAddress();
+  const address = typeof at === "object" ? at : {};
+  const foreign = address.workspace !== undefined && address.workspace !== workspace;
+  const { channel: addressChannel, post: addressPost, big: addressBig } = foreign ? {} : address;
+  /** Move to a channel (or a post in it) of this workspace. With no channel, to the workspace, which goes to the last channel. */
+  const to = (channel?: string, post?: number, big?: boolean) =>
+    go(channel ? link(channel, post, big) : format({ workspace }));
   const found =
-    channels?.find((channel) => channel.id === hashChannel) ??
-    (hashChannel === OTHER.id ? OTHER : undefined);
+    channels?.find((channel) => channel.id === addressChannel) ??
+    (addressChannel === OTHER.id ? OTHER : undefined);
   /** The place picked in the menu (a repo name or "All"). Kept on this device. */
   const [picked, setPicked] = useState(() => remembered(placeKey(workspace)));
   /** The place being viewed (mock 101): the one the address's channel stands in, else the picked one. The panel always shows this place. */
@@ -447,8 +448,13 @@ export function Workspace({
   useEffect(() => {
     if (here !== picked) setPicked(here);
     remember(placeKey(workspace), here);
-    if (found) remember(lastKey(workspace, here), `#${hash}`);
-  }, [here, hash, found, picked, workspace]);
+    if (found) remember(lastKey(workspace, here), link(found.id, addressPost, addressBig));
+  }, [here, found, addressPost, addressBig, picked, workspace]);
+  // `/` and `/channels/<workspace>` go to the channel last seen in the place (ADR-0057).
+  useEffect(() => {
+    if (foreign || addressChannel || !current) return;
+    go(lastPath(workspace, here) ?? link(current.id), true);
+  }, [foreign, addressChannel, current, workspace, here]);
   /** Share the repo being viewed (the Share button). The notice goes away once the server says yes. */
   const share = async () => {
     try {
@@ -464,20 +470,21 @@ export function Workspace({
   const pick = (id: string, place: string) => {
     if (id !== workspace) return onSwitch(id, place);
     setPicked(place);
-    location.hash = remembered(lastKey(workspace, place)) ?? "";
+    go(lastPath(workspace, place) ?? format({ workspace }));
   };
   const forum = current?.kind === "forum";
   /** All forum Posts. There are none until the forum is first read. */
   const [posts, setPosts] = useState<PostItem[]>();
-  const openPost = forum ? posts?.find((item) => item.alert === Number(hashPost)) : undefined;
-  const big = openPost !== undefined && hashSize === "big";
+  const openPost = forum ? posts?.find((item) => item.alert === addressPost) : undefined;
+  const big = openPost !== undefined && !!addressBig;
   /**
    * A channel or post reached by link isn't visible (mock 93-C): we don't tell "doesn't exist" from "in a repo you have no push access to".
    * The server doesn't reveal the repo name, so the screen has none either.
    */
   const missing =
-    (!!hashChannel && channels !== undefined && !found) ||
-    (forum && !!hashPost && posts !== undefined && !openPost);
+    foreign ||
+    (!!addressChannel && channels !== undefined && !found) ||
+    (forum && !!addressPost && posts !== undefined && !openPost);
   const asidePost = openPost !== undefined && !big;
   /** A Post acts like a channel: messages, past conversation, DMs, and `@call` go to the Post's channel. Its name is the title. */
   const postChannel: Channel | undefined = openPost && {
@@ -536,7 +543,7 @@ export function Workspace({
   const showProfile = (login: string) => {
     setCard(undefined);
     setProfile(login);
-    if (asidePost && openPost) location.hash = `${current?.id}`;
+    if (asidePost && openPost) to(current?.id);
     setRight("profile");
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: moving the conversation removes the attached Q&A
@@ -785,7 +792,8 @@ export function Workspace({
   };
   const goTo = ({ channel, dm, thread }: Notice) => {
     const item = posts?.find((one) => one.channel === channel);
-    location.hash = item ? `${item.forums[0] ?? OTHER.id}/${item.alert}` : channel;
+    if (item) to(item.forums[0] ?? OTHER.id, item.alert);
+    else to(channel);
     if (dm) setRight("agent");
     if (thread !== undefined) void openThread(channel, thread);
   };
@@ -908,7 +916,7 @@ export function Workspace({
       repo: here === ALL ? undefined : here,
     });
     add(channel);
-    location.hash = channel.id;
+    to(channel.id);
   };
 
   /** Changes a Post's labels. The changed summary is put in right from the reply, and also arrives as an alert line on the live connection. */
@@ -935,7 +943,7 @@ export function Workspace({
     try {
       const { channel } = await call(server(session), api.createForum, { name, filter });
       add(channel);
-      location.hash = channel.id;
+      to(channel.id);
     } catch (error) {
       throw check(error);
     }
@@ -951,7 +959,7 @@ export function Workspace({
     try {
       await call(server(session), api.deleteForum, { id: forum.id });
       setChannels((list) => list?.filter((channel) => channel.id !== forum.id));
-      location.hash = "";
+      to();
     } catch (error) {
       throw check(error);
     }
@@ -1310,12 +1318,12 @@ export function Workspace({
                   <div className="post-title">
                     <a
                       className="header-button"
-                      href={`#${current.id}`}
+                      href={link(current.id)}
                       aria-label={t.channels.frame.backToForum}
                     >
                       <ChevronLeft size={18} aria-hidden />
                     </a>
-                    <a className="post-crumb" href={`#${current.id}`}>
+                    <a className="post-crumb" href={link(current.id)}>
                       {current.name} ›
                     </a>
                     <h2>{postTitle(openPost)}</h2>
@@ -1346,7 +1354,7 @@ export function Workspace({
                   {big && openPost && current && (
                     <a
                       className="header-button"
-                      href={`#${current.id}/${openPost.alert}`}
+                      href={link(current.id, openPost.alert)}
                       aria-label={t.channels.frame.toSidePanel}
                     >
                       <Minimize2 size={18} aria-hidden />
@@ -1412,7 +1420,7 @@ export function Workspace({
                     className="button outline"
                     onClick={() => {
                       setPicked(repos.length > 1 ? ALL : repos[0]);
-                      location.hash = "";
+                      to();
                     }}
                   >
                     {repos.length > 1
@@ -1456,7 +1464,7 @@ export function Workspace({
                 sheet={!wide}
                 full
                 onClose={() => {
-                  location.hash = current?.id ?? "";
+                  to(current?.id);
                 }}
                 head={
                   <div className="post-head">
@@ -1468,7 +1476,7 @@ export function Workspace({
                     {wide && (
                       <a
                         className="header-button"
-                        href={`#${current?.id}/${openPost.alert}/big`}
+                        href={link(current?.id ?? "", openPost.alert, true)}
                         aria-label={t.channels.frame.expand}
                       >
                         <Maximize2 size={18} aria-hidden />

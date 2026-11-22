@@ -64,9 +64,17 @@ export const ko: Words = {
     failed: "신청을 못 보냈어요. 조금 있다 다시 해 볼래요?",
     waitingTitle: "승인을 기다리고 있어요",
     waitingBody: (account) => `${account} 계정 신청이 운영자에게 갔어요.`,
-    waitingNote: "승인되면 이 화면이 저절로 넘어가요.",
+    waitingNote:
+      "승인되면 이 화면이 저절로 넘어가요. 닫아도 돼요. 나중에 이 주소로 다시 들어오면 이어져요.",
+    waitingUrgent: "급하면 운영자에게 직접 말해도 돼요.",
     approvedTitle: (account) => `${account} 계정이 승인됐어요`,
     approvedBody: "레포를 넣으면 시작돼요.",
+    approvedAdmin:
+      "레포는 그 레포의 Admin이 넣어요. 내가 Admin이 아니면 Admin에게 이 화면을 보여 주세요.",
+    approvedApp:
+      "그 레포에 Omagari GitHub App이 설치돼 있어야 해요. Omagari는 App을 설치한 레포만 봐요.",
+    approvedAppUse:
+      "App은 레포 내용, 이슈, PR을 읽고 써요. Omagari는 이걸로 push 권한을 확인하고, 결정 PR을 열고 머지하고, 글 이슈를 열고, 라벨을 고쳐요.",
     deniedTitle: (account) => `${account} 계정은 승인되지 않았어요`,
     deniedBody: "다른 계정으로 신청할 수 있어요.",
     closedTitle: "이 서버는 가입 신청을 받지 않아요",

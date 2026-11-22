@@ -96,6 +96,7 @@ export function Access({
         <h1>{t.access.waitingTitle}</h1>
         <p>{t.access.waitingBody(latest.account)}</p>
         <p className="hint">{t.access.waitingNote}</p>
+        <p className="hint">{t.access.waitingUrgent}</p>
         <div className="actions">{logout}</div>
       </Centered>
     );
@@ -120,6 +121,9 @@ export function Access({
       <Centered>
         <h1>{t.access.approvedTitle(latest.account)}</h1>
         <p>{t.access.approvedBody}</p>
+        <p className="hint">{t.access.approvedAdmin}</p>
+        <p className="hint">{t.access.approvedApp}</p>
+        <p className="hint">{t.access.approvedAppUse}</p>
         <div className="actions">
           <button type="button" className="button primary" onClick={open}>
             {t.channels.addRepo.title}
