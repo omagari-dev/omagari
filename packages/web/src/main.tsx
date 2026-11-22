@@ -6,8 +6,9 @@ import { api, call } from "@omagari/contract";
 import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Access } from "./access.tsx";
+import { followLinks, format, go, parse, usePath, workspaceOf } from "./address.ts";
 import {
-  lastKey,
+  lastPath,
   type Me,
   placeKey,
   remember,
@@ -28,6 +29,27 @@ import { Workspace } from "./workspace.tsx";
 /** The workspace last picked on this device. */
 const WORKSPACE_KEY = "omagari.workspace";
 
+/** The address to come back to after signing in (ADR-0057). */
+let returnTo: string | undefined;
+
+/**
+ * The path for an address once signed in: an old `#…` link gets its workspace from its channel (`workspaces`, the likely one first),
+ * and `/login` and unknown addresses go to `/`.
+ */
+async function settle(address: string, session: string, workspaces: string[]) {
+  const at = parse(address);
+  if (typeof at !== "object" || !(at.workspace || at.channel)) return "/";
+  const workspace =
+    at.workspace ??
+    (await workspaceOf(at.channel ?? "", workspaces, (id) =>
+      call({ ...server(session), workspace: id }, api.channels).then(
+        (list) => list.channels,
+        () => [],
+      ),
+    ));
+  return format({ ...at, workspace });
+}
+
 type State =
   | { kind: "checking" }
   | { kind: "out"; notice?: string }
@@ -39,6 +61,7 @@ function App() {
     savedSession() ? { kind: "checking" } : { kind: "out" },
   );
   useLanguage(); // redraws every screen when the language changes
+  const path = usePath();
 
   /** The session ended. Go back to login and say so. */
   const expire = useCallback(() => {
@@ -62,13 +85,19 @@ function App() {
           return setState({ kind: "out" });
         }
         saveSession(session);
-        // Enter the workspace seen last time. If it's gone, the first one.
+        // Enter the workspace seen last time (if it's gone, the first one), unless the address is in another one.
         const saved = remembered(WORKSPACE_KEY);
         const workspace =
           workspaces.find((space) => space.id === saved)?.id ?? workspaces[0]?.id ?? "";
+        const back = returnTo ?? location.pathname + location.hash;
+        returnTo = undefined;
+        const others = workspaces.map((space) => space.id).filter((id) => id !== workspace);
+        const target = await settle(back, session, [workspace, ...others]);
         setWorkspace(workspace);
         setLanguage(me.prefs.language);
         setAppearance(me.prefs.appearance);
+        // In the same tick as the state, so the signed-out redirect never sees the new path.
+        go(target, true);
         setState({ kind: "in", session, me, workspaces, workspace });
       } catch (error) {
         if (!signedOut(error)) return setState({ kind: "unreachable", session });
@@ -82,6 +111,42 @@ function App() {
     const session = savedSession();
     if (session) void enter(session);
   }, [enter]);
+
+  // Signed out, every address goes to /login, and signing in comes back to it (ADR-0057).
+  useEffect(() => {
+    if (state.kind !== "out" || path === "/login") return;
+    returnTo = path;
+    go("/login", true);
+  }, [state.kind, path]);
+
+  // Signed in, an old `#…` link, /login, or an unknown address is replaced by its path.
+  useEffect(() => {
+    if (state.kind !== "in") return;
+    const at = parse(path);
+    if (typeof at === "object" && (at.workspace || !at.channel)) return;
+    let stale = false;
+    const others = state.workspaces.map((space) => space.id).filter((id) => id !== state.workspace);
+    void settle(path, state.session, [state.workspace, ...others]).then(
+      (to) => !stale && go(to, true),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [state, path]);
+
+  /** The workspace in the address, if I'm in it. An address in another workspace switches to it. */
+  const at = parse(path);
+  const addressed =
+    state.kind === "in" &&
+    typeof at === "object" &&
+    state.workspaces.some((space) => space.id === at.workspace)
+      ? at.workspace
+      : undefined;
+  useEffect(() => {
+    if (state.kind !== "in" || !addressed || addressed === state.workspace) return;
+    remember(WORKSPACE_KEY, addressed);
+    setState({ ...state, workspace: addressed });
+  }, [state, addressed]);
 
   if (state.kind === "checking") return <main className="centered" aria-busy="true" />;
   if (state.kind === "out") return <Login notice={state.notice} onSession={enter} />;
@@ -108,14 +173,14 @@ function App() {
     setState({ kind: "out" });
     void call(server(session), api.logout).catch(() => {});
   };
-  /** Go to another account's place (a repo or "All"). Redraws the app frame and goes to the channel last seen there (mockup 101). */
+  /** Go to another account's place (a repo or "All"). Its address redraws the app frame and goes to the channel last seen there (mockup 101). */
   const switchTo = (workspace: string, place: string) => {
-    remember(WORKSPACE_KEY, workspace);
     remember(placeKey(workspace), place);
-    setWorkspace(workspace);
-    history.replaceState(null, "", remembered(lastKey(workspace, place)) || location.pathname);
-    setState({ ...state, workspace });
+    go(lastPath(workspace, place) ?? format({ workspace }));
   };
+  // The address picks the workspace before the effect above catches up, so the old one never draws a foreign address.
+  const workspace = addressed ?? state.workspace;
+  setWorkspace(workspace);
   // Signed in, but in no workspace yet: a server that takes access requests let them in to request one (ADR-0052).
   if (state.workspaces.length === 0)
     return (
@@ -129,11 +194,11 @@ function App() {
     );
   return (
     <Workspace
-      key={state.workspace}
+      key={workspace}
       me={state.me}
       session={session}
       workspaces={state.workspaces}
-      workspace={state.workspace}
+      workspace={workspace}
       onSwitch={switchTo}
       onRepos={(repos) =>
         setState((now) =>
@@ -155,6 +220,7 @@ function App() {
   );
 }
 
+followLinks();
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
     <App />
