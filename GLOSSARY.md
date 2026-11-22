@@ -131,6 +131,10 @@ _Avoid_: cloud, SaaS, public server
 An Omagari server a team runs for itself. Its branch names, files, chat, and patches never leave it. It is a first-class way to run Omagari, not a fallback.
 _Avoid_: on-prem, private server
 
+**Docs site** (문서 사이트):
+Our site at `omagari.org`: the landing page and the docs. It isn't a server, and a self-hosted server never shows it (ADR-0057).
+_Avoid_: homepage, marketing site
+
 **Operator** (운영자):
 The person who runs a server. They approve access requests and answer for the data on it. On the hosted server it's @Pancheble. A self-hosting team picks its own.
 _Avoid_: admin (that's a GitHub repo role), owner (that's a person with an agent)
