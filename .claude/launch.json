@@ -4,8 +4,40 @@
     {
       "name": "omagari-demo",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["test/demo.ts"],
+      "runtimeArgs": [
+        "test/demo.ts"
+      ],
       "port": 5180
+    },
+    {
+      "name": "static-demo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--base",
+        "/demo/",
+        "--outDir",
+        "dist-demo",
+        "--port",
+        "4180",
+        "--strictPort"
+      ],
+      "cwd": "packages/web",
+      "port": 4180,
+      "url": "http://localhost:4180"
+    },
+    {
+      "name": "docs-site",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vitepress",
+        "preview",
+        "--port",
+        "4181"
+      ],
+      "cwd": "site",
+      "port": 4181
     }
   ]
 }

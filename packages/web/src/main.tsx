@@ -6,7 +6,7 @@ import { api, call } from "@omagari/contract";
 import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Access } from "./access.tsx";
-import { followLinks, format, go, parse, usePath, workspaceOf } from "./address.ts";
+import { followLinks, format, go, here, parse, usePath, workspaceOf } from "./address.ts";
 import {
   lastPath,
   type Me,
@@ -89,7 +89,7 @@ function App() {
         const saved = remembered(WORKSPACE_KEY);
         const workspace =
           workspaces.find((space) => space.id === saved)?.id ?? workspaces[0]?.id ?? "";
-        const back = returnTo ?? location.pathname + location.hash;
+        const back = returnTo ?? here();
         returnTo = undefined;
         const others = workspaces.map((space) => space.id).filter((id) => id !== workspace);
         const target = await settle(back, session, [workspace, ...others]);
@@ -220,6 +220,8 @@ function App() {
   );
 }
 
+// The static demo answers the API in the browser (ADR-0058). Only the demo build has it.
+if (import.meta.env.MODE === "demo") await import("./demo.ts");
 followLinks();
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>

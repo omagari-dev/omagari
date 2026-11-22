@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "build:demo": "vite build --mode demo --base /demo/ --outDir dist-demo --emptyOutDir"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

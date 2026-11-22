@@ -16,7 +16,8 @@
     "typecheck": "tsc",
     "test": "node --test --test-force-exit --test-timeout=60000 \"test/**/*.test.ts\" \"packages/*/src/**/*.test.ts\"",
     "server": "node --env-file-if-exists=.env packages/server/src/main.ts",
-    "web": "npm run dev -w @omagari/web"
+    "web": "npm run dev -w @omagari/web",
+    "demo:fixtures": "DEMO_AGENT=fake DEMO_RECORD=packages/web/demo/fixtures.json node test/demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",

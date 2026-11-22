@@ -1,12 +1,12 @@
-# The user docs site (site/, VitePress) on GitHub Pages. Pull requests only build it.
+# The user docs site (site/, VitePress) on GitHub Pages, with the static demo at /demo/ (ADR-0058). Pull requests only build it.
 # It deploys from dev until the first release; then switch the branch to main (#334).
 name: Docs
 on:
   push:
     branches: [dev]
-    paths: [site/**, .github/workflows/docs.yml]
+    paths: [site/**, packages/web/**, packages/contract/**, .github/workflows/docs.yml]
   pull_request:
-    paths: [site/**, .github/workflows/docs.yml]
+    paths: [site/**, packages/web/**, packages/contract/**, .github/workflows/docs.yml]
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,9 +28,14 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: site/package-lock.json
+          cache-dependency-path: |
+            site/package-lock.json
+            package-lock.json
       - run: npm ci
       - run: npm run build
+      # The demo: the web app built in demo mode, answered in the browser from its recording (ADR-0058).
+      - run: npm ci && npm run build:demo -w @omagari/web && cp -R packages/web/dist-demo site/.vitepress/dist/demo
+        working-directory: .
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site/.vitepress/dist

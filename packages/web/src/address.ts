@@ -74,7 +74,14 @@ const subscribe = (listener: () => void) => {
     removeEventListener("popstate", listener);
   };
 };
-const here = () => location.pathname + location.hash;
+/**
+ * The static demo (ADR-0058) sits at one page (`/demo/`) of a host that knows no app paths, so its address stays there
+ * and the app's path lives in the history entry instead. Back and Forward still work; a reload starts over, like the demo's data.
+ */
+const DEMO = import.meta.env?.MODE === "demo";
+/** The path and hash now (`location.pathname + location.hash`, or the demo's). */
+export const here = (): string =>
+  DEMO ? (history.state?.path ?? "/") : location.pathname + location.hash;
 
 /** The path and hash now. Redraws on `go`, Back, and Forward. */
 export const usePath = () => useSyncExternalStore(subscribe, here);
@@ -84,7 +91,8 @@ export const useAddress = () => parse(usePath());
 /** Move to `path`: a new history entry, or with `replace` the same one (a redirect). */
 export function go(path: string, replace = false) {
   if (path === here()) return;
-  history[replace ? "replaceState" : "pushState"](null, "", path);
+  if (DEMO) history[replace ? "replaceState" : "pushState"]({ path }, "");
+  else history[replace ? "replaceState" : "pushState"](null, "", path);
   for (const listener of listeners) listener();
 }
 

@@ -38,3 +38,4 @@ github-check-result.md
 
 # Docs site build cache (site/.vitepress/dist is covered by dist/).
 site/.vitepress/cache/
+packages/web/dist-demo/

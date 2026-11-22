@@ -28,6 +28,7 @@
 //   Going to other's channel address (printed in the console) shows "You can't see this repo". In other-team Minsu Park is alone, so the alone case (mockup 100-A) shows.
 // - DEMO_AS=newcomer: logs the browser in as someone with no workspace, so you see the access request screen (ADR-0052).
 // - GIPHY_API_KEY=<key>: turns on GIFs; the browser asks the real GIPHY with it (ADR-0056). If not given, the input has no GIF button.
+// - DEMO_RECORD=<file>: records every answer for the static demo instead of starting the screen (`npm run demo:fixtures`, ADR-0058).
 // - When you quit (Ctrl+C) it deletes the temporary repo and DB. It isn't named *.test.ts so npm test and CI don't run it.
 // - A fake GitHub issue is opened for each post and the text goes there as comments. The post "Minsu Park · Hajun Choi" receives comments made on GitHub and the changed title and labels.
 // - It ends with GitHub merging blocked (to show "merge blocked"). After that every merge Omagari does is blocked.
@@ -49,6 +50,7 @@ import {
   serverToRunner,
 } from "@omagari/contract";
 import { claudeCode, codex, codexReady, type Executor } from "@omagari/runner";
+import { record } from "./demo-record.ts";
 import {
   eventually,
   fakeExecutor,
@@ -1098,6 +1100,13 @@ if (process.env.DEMO_SETUP === "new" || process.env.DEMO_SETUP === "connected") 
 }
 
 seeded = true;
+
+// DEMO_RECORD=<file>: record what the server answers for the static demo (ADR-0058), then quit. `npm run demo:fixtures`.
+if (process.env.DEMO_RECORD) {
+  await record(world.owner, process.env.DEMO_RECORD);
+  await world.stop();
+  process.exit(0);
+}
 
 const PORT = process.env.DEMO_PORT ?? process.env.PORT ?? "5180";
 const web = spawn("npx", ["vite", "--port", PORT, "--strictPort"], {
