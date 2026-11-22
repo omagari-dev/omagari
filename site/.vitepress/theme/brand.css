@@ -9,3 +9,79 @@
   --vp-c-brand-2: #0071e3;
   --vp-c-brand-3: #0066cc;
 }
+
+/* Landing page (layout: home). Marketing values from DESIGN.md. */
+.VPHome .name .clip {
+  font-size: 21px;
+}
+.VPHome .name {
+  font-size: 21px;
+  letter-spacing: 0;
+}
+.VPHome .text {
+  font-size: 56px;
+  line-height: 1.07;
+  font-weight: 600;
+  letter-spacing: -0.28px;
+}
+.VPHome .tagline {
+  font-size: 21px;
+  line-height: 1.38;
+  font-weight: 400;
+}
+.VPHome .beta-note {
+  flex: 0 0 100%;
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+.VPHome .VPImage {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 18px;
+  box-shadow: rgba(0, 0, 0, 0.22) 3px 5px 30px;
+}
+.VPHome .VPButton {
+  border-radius: 980px;
+}
+@media (max-width: 640px) {
+  .VPHome .text {
+    font-size: 40px;
+  }
+}
+.VPHome .VPHero .image {
+  flex: 1;
+  order: 2;
+  margin: 0;
+}
+.VPHome .VPHero .image-container {
+  width: 100%;
+  height: auto;
+}
+.VPHome .VPHero .image-bg {
+  display: none;
+}
+.VPHome .VPHero .image-src {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  max-height: none;
+  width: 100%;
+}
+@media (min-width: 960px) {
+  .VPHome .VPHero .main {
+    flex: 1 1 50%;
+    min-width: 0;
+    max-width: none;
+  }
+  .VPHome .VPHero .image {
+    flex: 1 1 50%;
+    min-width: 0;
+    padding-left: 32px;
+  }
+}
+@media (max-width: 959px) {
+  .VPHome .VPHero .image {
+    order: 2;
+    margin-top: 32px;
+  }
+}

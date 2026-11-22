@@ -12,14 +12,16 @@ export default defineConfig({
     search: { provider: "local" },
     outline: [2, 3],
     nav: [
-      { text: "Get started", link: "/getting-started" },
+      { text: "Docs", link: "/what-is-omagari" },
       { text: "Releases", link: `${repo}/releases` },
+      { text: "Status", link: "https://status.omagari.org" },
+      { text: "GitHub", link: repo },
     ],
     sidebar: [
       {
         text: "Start here",
         items: [
-          { text: "What is Omagari", link: "/" },
+          { text: "What is Omagari", link: "/what-is-omagari" },
           { text: "Getting started", link: "/getting-started" },
           { text: "Set up a machine", link: "/setup" },
         ],
@@ -52,8 +54,10 @@ export default defineConfig({
         ],
       },
     ],
-    socialLinks: [{ icon: "github", link: repo }],
     editLink: { pattern: `${repo}/edit/dev/site/:path`, text: "Edit this page on GitHub" },
-    footer: { message: "AGPL-3.0" },
+    footer: {
+      message:
+        'AGPL-3.0 · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/ko/terms">이용약관</a> · <a href="/ko/privacy">개인정보 처리방침</a>',
+    },
   },
 });
