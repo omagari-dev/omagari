@@ -61,9 +61,15 @@ export const en = {
     failed: "Couldn't send the request. Try again in a bit?",
     waitingTitle: "Waiting for approval",
     waitingBody: (account: string) => `Your request for ${account} went to the operator.`,
-    waitingNote: "This page moves on by itself once it's approved.",
+    waitingNote:
+      "This page moves on by itself once it's approved. You can close it and come back to this address later.",
+    waitingUrgent: "Need it sooner? Tell the operator directly.",
     approvedTitle: (account: string) => `${account} is approved`,
     approvedBody: "Add a repo to start.",
+    approvedAdmin: "A repo's GitHub Admin adds it. If that's not you, show them this screen.",
+    approvedApp: "The repo needs the Omagari GitHub App. Omagari only sees repos the App is on.",
+    approvedAppUse:
+      "The App reads and writes repo contents, issues, and pull requests. Omagari uses that only to check push access, open and merge decision PRs, open post issues, and edit labels.",
     deniedTitle: (account: string) => `${account} wasn't approved`,
     deniedBody: "You can request another account.",
     closedTitle: "This server doesn't take requests",
