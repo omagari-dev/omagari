@@ -6504,6 +6504,261 @@ button.person {
   color: inherit;
 }
 
+/* Getting started (#433, boards 122-AB, 121, 123): the checklist card grows from the connect card. */
+.connect.guide {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.connect code,
+.guide-dialog code {
+  padding: 1px 4px;
+  border-radius: var(--rounded-xs);
+  background: var(--parchment);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide-count {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.guide-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.guide-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-step {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 14px;
+}
+
+.guide-step:first-child {
+  border-top: 0;
+}
+
+.guide-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-step-body > p {
+  margin: 2px 0 8px;
+}
+
+.guide-dot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--dot-idle);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.guide-dot.now {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.guide-dot.done {
+  border-color: var(--primary-fill);
+  background: var(--primary-fill);
+  color: var(--on-primary);
+}
+
+.connect .guide-ok,
+.guide-ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--rounded-sm);
+  background: color-mix(in srgb, var(--online) 12%, transparent);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.guide-ok svg {
+  color: var(--online);
+}
+
+.guide-fold {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.guide-fold summary {
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.guide-fold ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.guide-invite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider);
+}
+
+.connect .guide-invite p {
+  flex: 1;
+  margin: 0;
+}
+
+.guide-invite strong,
+.guide-done strong {
+  color: var(--ink);
+}
+
+.guide-example {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.guide-example > div {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-sm);
+  font-size: 12px;
+}
+
+.guide-example span {
+  color: var(--text-secondary);
+}
+
+.connect .guide-example p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.connect.guide-done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connect.guide-done p {
+  flex: 1;
+  margin: 0;
+}
+
+.guide-bar {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--hairline);
+}
+
+.guide-bar i {
+  display: block;
+  height: 100%;
+  background: var(--primary-fill);
+}
+
+/* The progress button at the bottom of the channel panel, above the profile panel. */
+.guide-button {
+  display: grid;
+  gap: 6px;
+  margin: 8px 6px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.guide-button:hover {
+  background: var(--hover);
+}
+
+.guide-button-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guide-button-head span,
+.guide-button-next {
+  color: var(--text-secondary);
+}
+
+.guide-button-next {
+  font-size: 12px;
+}
+
+.dialog.guide-dialog {
+  width: min(560px, 100vw - 32px);
+}
+
+.guide-dialog .dialog-lead {
+  margin: 8px 0 18px;
+}
+
+.guide-dialog .guide-head {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.guide-dialog h3 {
+  margin: 18px 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.guide-dialog p,
+.guide-dialog-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.guide-dialog-note {
+  margin: 8px 0 0;
+}
+
 /* On narrow screens the copy button goes under its command so the command has the full width. */
 @media (max-width: 833px) {
   .connect,

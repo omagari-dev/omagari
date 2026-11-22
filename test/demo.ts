@@ -15,8 +15,9 @@
 //   a hidden first round, a rebuttal round, waiting (calling a proxy), proxy, choosing turn (changed stance, changed without a reason, three experiments), a human-chosen conclusion, decided by experiment,
 //   decided by evidence and an opted-out seat, ended without submitting, and expired. "points" has a request made without grounds (not opened), and "invoice" has a debate between me and Sora Han.
 //   Posts confirmed as broken (such as "tax") already have a debate opened by themselves. Expiry is made by pulling the opened time back in the DB.
-// - DEMO_SETUP=new: a member whose runner never connected and who shared nothing, so you see "Connect your computer" and the repo Share notice (#354).
-//   Combine with DEMO_RUNNER=off. (Only the DB rows are cleared; the stopped runner stays out.)
+// - DEMO_SETUP=new: a member whose runner never connected, who shared nothing and has no status line, so you see "Getting started" from step 2 (#354, #433).
+//   Combine with DEMO_RUNNER=off. (Only the DB rows are cleared; the stopped runner stays out.) DEMO_SETUP=connected keeps the runner, so it starts at step 3.
+//   Without DEMO_SETUP every step is done, so "You're all set" shows once.
 // - DEMO_MERGE_CHECK=off|no_sandbox: sets my runner's merge-run in the settings window to off or no sandbox. If not given, it is on.
 // - DEMO_CHECK=none: doesn't put a check command (.omagari.json) on the default branch. You see "no check command" in the settings window.
 // - Workspaces and repos (ADR-0043, #238): the workspace "omagari-test" has two repos (space, other) and a repo ("billing") where "me" is Admin but hasn't added it,
@@ -1081,9 +1082,12 @@ await say(
 );
 
 if (process.env.DEMO_RUNNER === "off") await world.runner.stop();
-if (process.env.DEMO_SETUP === "new") {
+if (process.env.DEMO_SETUP === "new" || process.env.DEMO_SETUP === "connected") {
   const fresh = new DatabaseSync(join(dirname(world.config), "omagari.db"));
-  fresh.exec("DELETE FROM runner_seen; DELETE FROM shares");
+  fresh.exec("DELETE FROM shares");
+  // My status lines go too, so "Getting started" shows step 4 not done (#433).
+  fresh.prepare("DELETE FROM lines WHERE login = ?").run(world.owner.login);
+  if (process.env.DEMO_SETUP === "new") fresh.exec("DELETE FROM runner_seen");
   fresh.close();
 }
 

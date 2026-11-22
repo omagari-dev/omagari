@@ -30,6 +30,7 @@ export const profileEn = {
     saveFailed: "Couldn't save your status message",
     presenceFailed: "Couldn't change your presence",
     settings: "Settings",
+    guide: "Getting started",
     logout: "Log out",
   },
   members: {

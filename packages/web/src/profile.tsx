@@ -53,11 +53,14 @@ export function ProfilePanel({
   solo = false,
   onLogout,
   onSettings,
+  onGuide,
   onPresence,
   onMessage,
 }: {
   me: Me;
   mine?: MemberView;
+  /** Shows "Getting started" in the menu, which turns the guide back on (#433). */
+  onGuide?: () => void;
   /** I'm the only member (mockup 100-A). Leaves out the presence dot and presence text and shows the GitHub login. */
   solo?: boolean;
   onLogout: () => void;
@@ -134,6 +137,13 @@ export function ProfilePanel({
             close();
             onSettings();
           }}
+          onGuide={
+            onGuide &&
+            (() => {
+              close();
+              onGuide();
+            })
+          }
           onDone={close}
         />
       )}
@@ -153,6 +163,7 @@ function StatusMenu({
   onMessage,
   onLogout,
   onSettings,
+  onGuide,
   onDone,
 }: {
   id: string;
@@ -162,6 +173,7 @@ function StatusMenu({
   onMessage: SetMessage;
   onLogout: () => void;
   onSettings: () => void;
+  onGuide?: () => void;
   onDone: () => void;
 }) {
   const chosen = chosenOf(mine);
@@ -389,6 +401,16 @@ function StatusMenu({
       >
         {t.profile.menu.settings}
       </button>
+      {onGuide && (
+        <button
+          type="button"
+          className="menu-item"
+          onPointerEnter={() => setFlyout(undefined)}
+          onClick={onGuide}
+        >
+          {t.profile.menu.guide}
+        </button>
+      )}
       <button type="button" className="menu-item danger" onClick={onLogout}>
         {t.profile.menu.logout}
       </button>
