@@ -172,3 +172,22 @@ test(
     assert.match(broken.stdout, /Verdict: Broken/, broken.stdout);
   },
 );
+
+test("omagari setup run without a terminal doesn't ask about merge runs, and on Windows says how to turn them on and keeps nothing; --merge-check unsandboxed is refused", {
+  timeout: 60_000,
+}, async (t) => {
+  const world = await startWorld();
+  t.after(world.stop);
+  const plain = await world.setup();
+  assert.equal(plain.code, 0, plain.stderr);
+  const note =
+    "Merge runs are off. To turn them on, run `omagari setup --merge-check unsandboxed` in a terminal yourself; an agent can't.";
+  if (process.platform === "win32") assert.ok(plain.stdout.includes(note), plain.stdout);
+  else assert.ok(!plain.stdout.includes("Merge runs"), plain.stdout);
+  const refused = await world.setup("--merge-check", "unsandboxed");
+  assert.equal(refused.code, 1);
+  assert.match(
+    refused.stderr,
+    process.platform === "win32" ? /an agent can't\./ : /only for native Windows/,
+  );
+});
