@@ -191,3 +191,24 @@ test("omagari setup run without a terminal doesn't ask about merge runs, and on 
     process.platform === "win32" ? /an agent can't\./ : /only for native Windows/,
   );
 });
+
+test(
+  "without a sandbox doesn't come from a file: a runner started where the repo's and the machine's files say unsandboxed runs with the sandbox setting",
+  process.platform === "win32" ? { timeout: 60_000 } : windowsOnly,
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    world.github.grant("alice");
+    await world.signInCli(await world.login("alice"));
+    const desk = await tempRepo();
+    t.after(desk.remove);
+    // Files anything on this machine can write, without a person typing yes.
+    await writer(join(desk.folder, ".git", "omagari"))("merge-check", "unsandboxed\n");
+    await writer(join(world.config, "omagari"))("merge-check", "unsandboxed\n");
+    const runner = world.launchCliIn(desk.folder, "runner");
+    t.after(() => runner.stop("SIGKILL"));
+    const [, state] = await runner.output(/Merge run \(([^)]+)\)/);
+    await runner.stop();
+    assert.notEqual(state, "on, without a sandbox");
+  },
+);
