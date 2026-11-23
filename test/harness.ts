@@ -95,14 +95,12 @@ function run(
     env?: object;
   },
 ) {
-  const t0 = Date.now(); // PERF-TMP
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
     const child = execFile(
       file,
       args,
       { cwd: options.cwd, env: { ...process.env, ...options.env } },
       (error, stdout, stderr) => {
-        console.error(`[perf] run ${Date.now() - t0}ms ${file} ${args.slice(0, 2).join(" ")}`); // PERF-TMP
         if (child.exitCode === null)
           reject(error); // it didn't start, or it was killed by a signal
         else resolve({ code: child.exitCode, stdout, stderr });
@@ -901,9 +899,7 @@ export async function startWorld(
     setup?: (github: ReturnType<typeof fakeGitHub>) => void;
   } = {},
 ) {
-  const w0 = Date.now(); // PERF-TMP
   const repo = await tempRepo();
-  console.error(`[perf] tempRepo ${Date.now() - w0}ms`); // PERF-TMP
   const data = await mkdtemp(join(tmpdir(), "omagari-server-")); // the server's DB and the CLI's config
   const cleanup = () => Promise.all([repo.remove(), removeTemp(data)]);
   const fake = fakeGitHub();
@@ -962,14 +958,12 @@ export async function startWorld(
     }
   };
 
-  console.error(`[perf] server ${Date.now() - w0}ms`); // PERF-TMP
   fake.grant("owner");
   const owner = await login("owner").catch(async (error) => {
     await server.stop();
     await cleanup();
     throw error;
   });
-  console.error(`[perf] login ${Date.now() - w0}ms`); // PERF-TMP
   const runner = await startRunner({
     serverUrl: server.url,
     folder: repo.folder,
@@ -993,7 +987,6 @@ export async function startWorld(
   // The user settings of Claude Code and Codex that the CLI installs or reads are also put in a temp folder. Tests don't touch this machine's ~/.claude and ~/.codex.
   // A runner started by the CLI also reads this Codex config, and with no login it doesn't attach Codex.
   // A runner started by the CLI uses the real Claude Code executor and asks what to pick when it starts. Put a fake at the front of PATH so it calls that instead of this machine's claude.
-  console.error(`[perf] runner ${Date.now() - w0}ms`); // PERF-TMP
   const bin = join(data, "bin");
   await mkdir(bin);
   await shim(bin, "claude", FAKE_CLAUDE);
@@ -1002,7 +995,6 @@ export async function startWorld(
     await shim(bin, name, FAKE_SERVICE, name);
   const home = join(data, "home");
   const serviceCalls = join(data, "service-calls.jsonl");
-  console.error(`[perf] world ${Date.now() - w0}ms`); // PERF-TMP
   const cliEnv = () => ({
     PATH: `${bin}${delimiter}${process.env.PATH}`,
     HOME: home,
