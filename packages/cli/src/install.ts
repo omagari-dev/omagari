@@ -76,15 +76,48 @@ async function codex() {
 /** Wraps it in single quotes so sh receives it as one word as-is. */
 const sh = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
 
+const WINDOWS = process.platform === "win32";
+
 /**
- * The hook command. It runs the hook with the same Node that runs this, and the hook sends the executor it got as an argument to the runner (ADR-0015).
- * The end is always the same, so if the path changes (Node upgraded or repo moved), reinstalling recognizes the old one and replaces it.
+ * The hook handler. It runs the hook with the same Node that runs this, and the hook sends the executor it got as an argument to the runner (ADR-0015).
+ * On Windows (ADR-0060) Claude Code gets the exec form (`command` + `args`, no shell, so Git Bash or PowerShell doesn't matter), and Codex gets a `commandWindows` next to the sh `command`.
+ * Which shape Codex runs there is checked by hand.
  */
-const hookCommand = (executor: ExecutorId) => `${sh(process.execPath)} ${sh(HOOK)} ${executor}`;
-const ours = (handler: unknown, executor: ExecutorId) =>
-  isRecord(handler) &&
-  typeof handler.command === "string" &&
-  handler.command.endsWith(`/hooks/src/main.ts' ${executor}`);
+function hookHandler(executor: ExecutorId) {
+  const command = `${sh(process.execPath)} ${sh(HOOK)} ${executor}`;
+  const handler: Record<string, unknown> = { type: "command", command, timeout: TIMEOUT };
+  if (!WINDOWS) return handler;
+  if (executor === "claude-code") {
+    return { type: "command", command: process.execPath, args: [HOOK, executor], timeout: TIMEOUT };
+  }
+  handler.commandWindows = `"${process.execPath}" "${HOOK}" ${executor}`;
+  return handler;
+}
+
+/**
+ * Whether this handler is Omagari's hook for this executor. It goes by the hook script's path (`main.ts` or `main.js`, `/` or `\`, any quotes), so a hook written
+ * with a different Node or repo path, in the old sh form or the exec form, is still recognized and replaced.
+ */
+const ours = (handler: unknown, executor: ExecutorId) => {
+  if (!isRecord(handler)) return false;
+  const script = /[\\/]hooks[\\/]src[\\/]main\.(ts|js)$/;
+  if (Array.isArray(handler.args)) {
+    const [path, last] = [handler.args.at(-2), handler.args.at(-1)];
+    return typeof path === "string" && script.test(path) && last === executor;
+  }
+  return [handler.command, handler.commandWindows].some((text) => {
+    const [path, last] = typeof text === "string" ? splitWords(text) : [];
+    return path !== undefined && script.test(path) && last === executor;
+  });
+};
+
+/** The last two words of a command line, with their quotes taken off. A path with a space stays whole inside its quotes. */
+function splitWords(text: string) {
+  const words = [...text.matchAll(/'((?:[^']|'\\'')*)'|"([^"]*)"|(\S+)/g)].map(
+    (m) => m[1] ?? m[2] ?? m[3],
+  );
+  return words.slice(-2);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -106,7 +139,7 @@ async function mergeHooks(
       ...withoutOurs(file, hooks, event, executor),
       {
         ...group,
-        hooks: [{ type: "command", command: hookCommand(executor), timeout: TIMEOUT }],
+        hooks: [hookHandler(executor)],
       },
     ];
   }
