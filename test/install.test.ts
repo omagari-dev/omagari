@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { eventually, startWorld, tempRepo, winSkip, writer } from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
-type Handler = { type: string; command: string; timeout?: number };
+type Handler = { type: string; command: string; args?: string[]; timeout?: number };
 type Group = { matcher?: string; hooks: Handler[] };
 type Settings = Record<string, unknown> & { hooks: Record<string, Group[]> };
 
@@ -190,13 +190,28 @@ test(
       command: "'/old/node' '/old/omagari/packages/hooks/src/main.ts' claude-code",
       timeout: 10,
     };
+    // Earlier installs in the other forms: an npm install (`main.js`) and a Windows exec form with backslashes.
+    const oldJs = {
+      type: "command",
+      command: "'/old/node' '/old/lib/omagari/packages/hooks/src/main.js' claude-code",
+    };
+    const oldExec = {
+      type: "command",
+      command: "C:\\old\\node.exe",
+      args: ["C:\\old\\omagari\\packages\\hooks\\src\\main.js", "claude-code"],
+    };
     const lint = { type: "command", command: "~/bin/lint-on-edit" };
     const seed = {
       permissions: { allow: ["Bash(npm test)"] },
       ...repo,
       hooks: {
         ...repo.hooks,
-        SessionStart: [...(repo.hooks.SessionStart ?? []), { hooks: [old] }],
+        SessionStart: [
+          ...(repo.hooks.SessionStart ?? []),
+          { hooks: [old] },
+          { hooks: [oldJs] },
+          { hooks: [oldExec] },
+        ],
         PreToolUse: [
           ...(repo.hooks.PreToolUse ?? []),
           { matcher: "Edit|Write", hooks: [lint, old] },
@@ -229,11 +244,20 @@ test(
       },
     );
     // The new Omagari hook is last for each event. Run this repo's hook with this machine's Node and pass the runner.
-    const command = SessionStart.at(-1)?.hooks[0]?.command ?? "";
-    assert.ok(command.startsWith(`'${process.execPath}' '`), command);
-    assert.match(command, /\/packages\/hooks\/src\/main\.ts' claude-code$/);
-    assert.doesNotMatch(command, /\/old\//);
-    const ours = { type: "command", command, timeout: 10 };
+    const handler = SessionStart.at(-1)?.hooks[0] ?? ({} as Handler);
+    if (process.platform === "win32") {
+      // ADR-0060: exec form, no shell.
+      assert.equal(handler.command, process.execPath);
+      assert.match(String(handler.args?.at(-2)), /[\\/]packages[\\/]hooks[\\/]src[\\/]main\.ts$/);
+      assert.equal(handler.args?.at(-1), "claude-code");
+    } else {
+      // Run this repo's hook with this machine's Node and pass the runner.
+      assert.ok(handler.command.startsWith(`'${process.execPath}' '`), handler.command);
+      assert.match(handler.command, /\/packages\/hooks\/src\/main\.ts' claude-code$/);
+      assert.doesNotMatch(handler.command, /\/old\//);
+    }
+    assert.doesNotMatch(JSON.stringify(handler), /old/);
+    const ours = handler;
     assert.deepEqual(SessionStart.at(-1), { hooks: [ours] });
     assert.deepEqual(PreToolUse.at(-1), { matcher: EDIT_MATCHER, hooks: [ours] });
 
