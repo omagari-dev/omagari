@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
@@ -52,6 +52,7 @@ import {
   type WorkRef,
   type WorkView,
 } from "@omagari/contract";
+import { execShim, spawnShim } from "@omagari/contract/shim";
 import { checkoutBranch, checkoutVersion, installedPackage } from "@omagari/contract/version";
 import {
   CHECK_LIMITS,
@@ -153,7 +154,7 @@ async function converse<T>(
   lines: object[],
   pick: (event: Record<string, unknown>) => T | undefined,
 ): Promise<T> {
-  const child = spawn(command, args, {
+  const child = spawnShim(command, args, {
     stdio: ["pipe", "pipe", "ignore"],
     signal: AbortSignal.timeout(CHOICES_TIMEOUT_MS),
   });
@@ -226,7 +227,7 @@ export const claudeCode: Executor = async ({
   model,
   effort,
 }) => {
-  const run = execFileAsync(
+  const run = execShim(
     "claude",
     [
       "-p",
@@ -347,7 +348,7 @@ type CodexEvent = {
  */
 export const codex: Executor = async ({ message, resume, fork, folder, signal, model, effort }) => {
   // Ask from the work folder so the repo's `.codex/config.toml` is read too. Codex only accepts `[a-zA-Z0-9_-]` in server names.
-  const listed = await execFileAsync("codex", ["mcp", "list", "--json"], {
+  const listed = await execShim("codex", ["mcp", "list", "--json"], {
     cwd: folder,
     signal,
   });
@@ -372,7 +373,7 @@ export const codex: Executor = async ({ message, resume, fork, folder, signal, m
           ...(resume ? ["resume", resume] : []),
           "-",
         ];
-  const run = execFileAsync("codex", args, {
+  const run = execShim("codex", args, {
     cwd: folder,
     maxBuffer: 64 * 1024 * 1024,
     signal,
@@ -453,7 +454,7 @@ codex.choices = () =>
 
 /** Whether Codex can run on this machine: it's installed and logged in (`codex login status` exits with 0). */
 export const codexReady = () =>
-  execFileAsync("codex", ["login", "status"]).then(
+  execShim("codex", ["login", "status"]).then(
     () => true,
     () => false,
   );
@@ -552,6 +553,12 @@ export function backgroundSocket() {
   const id = createHash("sha256").update(config).digest("hex").slice(0, 16);
   return join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), `omagari-background-${id}.sock`);
 }
+
+/** What the background runner is sent to make it stop (a folder is always absolute, so this can't be one). */
+export const STOP = "stop";
+
+/** Asks the background runner to close its runners and exit. The only way to stop it cleanly on Windows, which has no SIGTERM (ADR-0060). Throws if it's off. */
+export const stopBackground = () => callBackground(STOP).then(() => undefined);
 
 /**
  * Tells the background runner about `folder` (the session-start hook) and returns the runner sockets it watches, one per repo.

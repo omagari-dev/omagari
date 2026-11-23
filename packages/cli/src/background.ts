@@ -5,7 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { text } from "node:stream/consumers";
-import { backgroundSocket, OutsideAccounts, readRepo, runnerPaths } from "@omagari/runner";
+import { backgroundSocket, OutsideAccounts, readRepo, runnerPaths, STOP } from "@omagari/runner";
 
 /** How often it tries again the folders whose runner isn't on (server down at login, a terminal runner that ended). */
 const RETRY_MS = 60_000;
@@ -13,7 +13,7 @@ const RETRY_MS = 60_000;
 type Running = { ended: Promise<unknown>; stop: () => Promise<void> | void };
 
 /**
- * Runs until SIGINT or SIGTERM. `start` starts the runner of one repo folder; `foldersFile` keeps the folders it has seen.
+ * Runs until SIGINT or SIGTERM, or, where there are no signals between processes (Windows, ADR-0060), until a "stop" request comes over its socket. `start` starts the runner of one repo folder; `foldersFile` keeps the folders it has seen.
  * A folder whose remotes aren't under the server's accounts is dropped without sending anything (ADR-0049). It comes back only if a session opens there again.
  */
 export async function background(foldersFile: string, start: (folder: string) => Promise<Running>) {
@@ -80,8 +80,14 @@ export async function background(foldersFile: string, start: (folder: string) =>
     }
   }
 
-  /** A folder from the hook. "" only asks which repos are watched. Answers with the per-repo sockets of the runners that are on. */
+  const stopRequested = Promise.withResolvers<void>();
+
+  /** A folder from the hook. "stop" ends this process after its runners close. "" only asks which repos are watched. Answers with the per-repo sockets of the runners that are on. */
   async function answer(request: string) {
+    if (request === STOP) {
+      stopRequested.resolve();
+      return "[]";
+    }
     const repo = request ? await readRepo(request).catch(() => undefined) : undefined;
     if (repo) {
       if (!folders.includes(repo.folder)) {
@@ -113,7 +119,10 @@ export async function background(foldersFile: string, start: (folder: string) =>
   await watchAll();
   const retry = setInterval(() => watchAll().catch(() => {}), RETRY_MS);
 
-  await Promise.race(["SIGINT", "SIGTERM"].map((signal) => once(process, signal)));
+  await Promise.race([
+    ...["SIGINT", "SIGTERM"].map((signal) => once(process, signal)),
+    stopRequested.promise,
+  ]);
   clearInterval(retry);
   local.close();
   await Promise.all([...running.values()].map(async (runner) => (await runner)?.stop()));

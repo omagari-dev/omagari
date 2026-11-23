@@ -59,3 +59,28 @@ test(
     );
   },
 );
+
+test(
+  "omagari runner stop closes the background runner's runners and ends it, without a signal",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    await world.runner.stop();
+    await world.signInCli(world.owner);
+    const background = world.launchCliIn(world.repo.folder, "runner", "background");
+    t.after(() => background.stop("SIGTERM"));
+    await background.output(/Background runner on/);
+    assert.equal((await world.hook(sessionStart(world.repo.folder))).code, 0);
+    await eventually(async () =>
+      assert.equal((await world.agents(world.owner))[world.owner.login], "online"),
+    );
+
+    assert.equal((await world.cli("runner", "stop")).stdout, "Stopping the background runner\n");
+    await background.output(/Background runner stopped/);
+    await eventually(async () =>
+      assert.equal((await world.agents(world.owner))[world.owner.login], "offline"),
+    );
+    assert.match((await world.cli("runner", "stop")).stderr, /The background runner is off/);
+  },
+);

@@ -15,6 +15,7 @@ const PACKAGES = ["contract", "runner", "cli", "hooks"];
 /** Where each workspace import points inside the built package. */
 const WORKSPACE: Record<string, string> = {
   "@omagari/contract": "packages/contract/src/index.js",
+  "@omagari/contract/shim": "packages/contract/src/shim.js",
   "@omagari/contract/version": "packages/contract/src/version.js",
   "@omagari/runner": "packages/runner/src/index.js",
 };
