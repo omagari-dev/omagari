@@ -3,26 +3,18 @@ const steps = [
   {
     title: "Work shows up",
     text: "The runner sees a teammate's agent start on a branch, and shows it next to their name.",
-    img: "step-1.png",
-    alt: "A member in the Members panel, showing one work",
   },
   {
     title: "Conflict alert",
     text: "Your branch and theirs touch the same function. Both of you hear about it.",
-    img: "step-2.png",
-    alt: "An alert post: an indirect conflict between feat/payment-model and feat/wallet, in src/pay.ts",
   },
   {
     title: "Merge run",
     text: "A runner merges the two in a sandbox and runs your check command.",
-    img: "step-3.png",
-    alt: "A merge run result: Fails, breaks when merged, both pass on their own",
   },
   {
     title: "Decision",
     text: "They settle it in the post. The decision lands in the repo as a PR.",
-    img: "step-4.png",
-    alt: "A decision card: Proposed, with Agree and Object buttons and a link to the PR",
   },
 ];
 </script>
@@ -40,7 +32,6 @@ const steps = [
           <span class="n">{{ i + 1 }}</span>
           <h3>{{ s.title }}</h3>
           <p>{{ s.text }}</p>
-          <img :src="`/${s.img}`" :alt="s.alt" loading="lazy" />
         </li>
       </ol>
     </section>
@@ -159,16 +150,10 @@ h3 {
   margin: 6px 0 4px;
 }
 .steps p {
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 14px;
   line-height: 1.43;
   color: var(--muted);
-}
-.steps img {
-  display: block;
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 11px;
 }
 .data {
   max-width: 880px;

@@ -18,7 +18,4 @@ hero:
     - theme: alt
       text: Self-host
       link: /server
-  image:
-    src: /app.png
-    alt: "The Omagari app: channels on the left, a conflict post in the middle"
 ---
