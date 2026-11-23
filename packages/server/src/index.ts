@@ -5860,6 +5860,9 @@ export async function startServer(options: {
         const access = await readAccess(row.login, row.github_token);
         if (stopped) return;
         if (access.push.length > 0 || access.unknown.length > 0 || operators.size > 0) continue;
+        // The session may have ended while GitHub was read (a refresh GitHub rejected). Then the access above was read with its
+        // expired token and says nothing about permission, and the person was already told to sign in again.
+        if (!db.prepare("SELECT 1 FROM sessions WHERE hash = ?").get(row.hash)) continue;
         endSession(row.hash, {
           code: "forbidden",
           message: `${row.login} was removed: no push permission on any workspace repo anymore`,
