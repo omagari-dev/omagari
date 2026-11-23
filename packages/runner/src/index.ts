@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
-import { connect as connectLocal, createServer } from "node:net";
+import { connect as connectLocal, createServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -504,6 +504,35 @@ export function localSocket(name: string) {
     : join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), `${name}.sock`);
 }
 
+/**
+ * The local protocol is one request line, then one answer, then the server closes. A Windows pipe can't be half-closed, so the request ends with a newline (JSON and folder paths have none) and the server, not the client, ends the connection.
+ */
+export async function requestLocal(path: string, request: string) {
+  const connection = connectLocal(path);
+  connection.write(`${request}\n`);
+  return text(connection);
+}
+
+/** The server side of `requestLocal`: reads one line, calls `answer`, writes the result and closes. */
+export function serveLocal(answer: (request: string) => Promise<string> | string) {
+  return (connection: Socket) => {
+    connection.on("error", () => {}); // The server keeps running even if the client hangs up first
+    let request = "";
+    const onData = (chunk: Buffer) => {
+      request += chunk.toString();
+      const end = request.indexOf("\n");
+      if (end < 0) return;
+      connection.off("data", onData);
+      Promise.resolve(answer(request.slice(0, end))).then(
+        (reply) => connection.write(reply, () => connection.destroy()),
+        () => connection.destroy(),
+      );
+    };
+    connection.on("data", onData);
+    connection.on("close", () => connection.off("data", onData));
+  };
+}
+
 /** Removes the socket file a turned-off runner left behind. A pipe leaves no file, so on Windows there's nothing to remove. */
 export async function removeStaleSocket(path: string) {
   if (process.platform !== "win32") await rm(path, { force: true });
@@ -542,9 +571,7 @@ export async function callRunner<K extends keyof typeof cliToRunner & string>(
   payload: Parameters<typeof encode<typeof cliToRunner, K>>[2],
 ) {
   const { socket } = await runnerPaths(folder);
-  const connection = connectLocal(socket);
-  connection.end(encode(cliToRunner, kind, payload));
-  const frame = await text(connection).catch(() => {
+  const frame = await requestLocal(socket, encode(cliToRunner, kind, payload)).catch(() => {
     throw new Error(`The runner is off: ${socket}`);
   });
   const decoded = decode(runnerToCli, frame);
@@ -571,9 +598,7 @@ export function backgroundSocket() {
  * It answers a folder after it has tried to start that folder's runner, so the caller can talk to that runner right after.
  */
 export async function callBackground(folder: string): Promise<string[]> {
-  const connection = connectLocal(backgroundSocket());
-  connection.end(folder);
-  return JSON.parse(await text(connection));
+  return JSON.parse(await requestLocal(backgroundSocket(), folder));
 }
 
 /**
@@ -1860,16 +1885,7 @@ export async function startRunner(options: {
     probe.once("error", () => resolve(false));
   });
   if (taken) throw new Error(`A runner for this repo is already on: ${folder}`);
-  // The CLI writes one request and closes its writing end. The runner writes one answer and closes.
-  const local = createServer({ allowHalfOpen: true }, (connection) => {
-    connection.on("error", () => {}); // The runner keeps running even if the CLI hangs up first
-    text(connection)
-      .then(replyToCli)
-      .then(
-        (answer) => connection.end(answer),
-        () => connection.destroy(),
-      );
-  });
+  const local = createServer(serveLocal(replyToCli));
   await removeStaleSocket(paths.socket); // The socket a runner that was turned off left behind
   local.listen(paths.socket);
   await once(local, "listening");

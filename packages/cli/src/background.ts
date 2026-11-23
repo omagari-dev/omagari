@@ -4,13 +4,13 @@ import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
-import { text } from "node:stream/consumers";
 import {
   backgroundSocket,
   OutsideAccounts,
   readRepo,
   removeStaleSocket,
   runnerPaths,
+  serveLocal,
 } from "@omagari/runner";
 
 /** How often it tries again the folders whose runner isn't on (server down at login, a terminal runner that ended). */
@@ -103,15 +103,7 @@ export async function background(foldersFile: string, start: (folder: string) =>
   }
 
   const socket = backgroundSocket();
-  const local = createServer({ allowHalfOpen: true }, (connection) => {
-    connection.on("error", () => {}); // the hook may hang up before the answer
-    text(connection)
-      .then(answer)
-      .then(
-        (reply) => connection.end(reply),
-        () => connection.destroy(),
-      );
-  });
+  const local = createServer(serveLocal(answer));
   await removeStaleSocket(socket); // left behind by a background runner that was killed
   local.listen(socket);
   await once(local, "listening");
