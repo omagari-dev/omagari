@@ -266,172 +266,192 @@ test(
   },
 );
 
-test("the runner takes only Q&A. It doesn't run a request not in the contract, a Q&A that widens tools, or a Q&A sent to an executor it doesn't run", async (t) => {
-  // Imitating a breached server: it answers hello properly, then sends a request not in the contract, a Q&A that widens tools, and a proper Q&A.
-  const server = await fakeServer(t, (socket, hello) => {
-    socket.send(
-      encode(serverToRunner, "welcome", { login: "owner", repo: REPO, shared: true }, hello.id),
-    );
-    socket.send(frame({ id: "x", kind: "run_command", payload: { command: "rm -rf ~" } }));
-    const ask = {
-      executor: "claude-code",
-      channel: { id: "c", name: "general" },
-      recent: [],
-    };
-    socket.send(
-      frame({
-        id: "y",
-        kind: "ask",
-        payload: { ...ask, message: "delete it", tools: ["Bash"] },
-      }),
-    );
-    socket.send(
-      frame({
-        id: "w",
-        kind: "ask",
-        payload: { ...ask, executor: "codex", message: "who are you" },
-      }),
-    );
-    socket.send(
-      frame({
-        id: "z",
-        kind: "ask",
-        payload: { ...ask, message: "read only" },
-      }),
-    );
-  });
-  // The answer is late so the runner's first observation (the checkCommand sent once per connection) arrives first. The server doesn't count that message.
-  const fake = fakeExecutor(async () => {
-    await setTimeout(500);
-    return "fake answer";
-  });
-  const runner = await startRunner({
-    ...server.runner,
-    executors: { "claude-code": fake.executor },
-  });
-  t.after(runner.stop);
-
-  await eventually(() => assert.equal(server.received.length, 4));
-  const [x, y, w, z] = server.received;
-  assert.partialDeepStrictEqual(x, {
-    kind: "error",
-    re: "x",
-    payload: { code: "unknown_kind" },
-  });
-  assert.partialDeepStrictEqual(y, {
-    kind: "error",
-    re: "y",
-    payload: { code: "invalid_message" },
-  });
-  // A Q&A sent to an executor this runner doesn't run isn't run.
-  assert.partialDeepStrictEqual(w, {
-    kind: "error",
-    re: "w",
-    payload: {
-      code: "invalid_message",
-      message: "This is an executor the runner doesn't run: codex",
-    },
-  });
-  assert.partialDeepStrictEqual(z, {
-    kind: "answer",
-    re: "z",
-    payload: { text: "fake answer" },
-  });
-  // What reached the executor is the one proper Q&A, and the tools and folder are what the runner decided.
-  assert.deepEqual(
-    fake.calls.map(({ message, tools, folder }) => ({
-      message,
-      tools,
-      folder,
-    })),
-    [
-      {
-        message: "read only",
-        tools: ["Read", "Grep", "Glob"],
-        folder: server.runner.folder,
-      },
-    ],
-  );
-});
-
-test("the runner recognizes a server with a different contract version and doesn't turn on", async (t) => {
-  const server = await fakeServer(t, (socket, hello) => {
-    socket.send(
-      frame({
-        v: CONTRACT_VERSION + 1,
-        id: "w",
-        re: hello.id,
-        kind: "welcome",
-      }),
-    );
-  });
-
-  await assert.rejects(startRunner(server.runner), {
-    code: "version_mismatch",
-  });
-  await server.closed;
-});
-
-test("when refused for a different contract version, the runner says what to update", async (t) => {
-  const advice = {
-    newer: `Pull \`${gitBranch()}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`,
-    older: "The server is older. Update the server (tell whoever runs it)",
-  };
-  for (const [contract, todo] of [
-    [CONTRACT_VERSION + 1, advice.newer],
-    [CONTRACT_VERSION - 1, advice.older],
-  ] as const) {
-    // A refusal from a server with a different contract version. This shape is fixed regardless of the contract version, so it is read even with keys added later.
+test(
+  "the runner takes only Q&A. It doesn't run a request not in the contract, a Q&A that widens tools, or a Q&A sent to an executor it doesn't run",
+  winSkip(463),
+  async (t) => {
+    // Imitating a breached server: it answers hello properly, then sends a request not in the contract, a Q&A that widens tools, and a proper Q&A.
     const server = await fakeServer(t, (socket, hello) => {
       socket.send(
-        JSON.stringify({
-          v: contract,
-          id: "e",
-          re: hello.id,
-          kind: "error",
-          payload: {
-            code: "version_mismatch",
-            message: `contract version differs: received ${CONTRACT_VERSION}, here ${contract}`,
-            version: "v0.3.0",
-            contract,
-            later: "a key added by a later contract",
-          },
+        encode(serverToRunner, "welcome", { login: "owner", repo: REPO, shared: true }, hello.id),
+      );
+      socket.send(frame({ id: "x", kind: "run_command", payload: { command: "rm -rf ~" } }));
+      const ask = {
+        executor: "claude-code",
+        channel: { id: "c", name: "general" },
+        recent: [],
+      };
+      socket.send(
+        frame({
+          id: "y",
+          kind: "ask",
+          payload: { ...ask, message: "delete it", tools: ["Bash"] },
         }),
       );
-      socket.close(1008, "version_mismatch");
+      socket.send(
+        frame({
+          id: "w",
+          kind: "ask",
+          payload: { ...ask, executor: "codex", message: "who are you" },
+        }),
+      );
+      socket.send(
+        frame({
+          id: "z",
+          kind: "ask",
+          payload: { ...ask, message: "read only" },
+        }),
+      );
+    });
+    // The answer is late so the runner's first observation (the checkCommand sent once per connection) arrives first. The server doesn't count that message.
+    const fake = fakeExecutor(async () => {
+      await setTimeout(500);
+      return "fake answer";
+    });
+    const runner = await startRunner({
+      ...server.runner,
+      executors: { "claude-code": fake.executor },
+    });
+    t.after(runner.stop);
+
+    await eventually(() => assert.equal(server.received.length, 4));
+    const [x, y, w, z] = server.received;
+    assert.partialDeepStrictEqual(x, {
+      kind: "error",
+      re: "x",
+      payload: { code: "unknown_kind" },
+    });
+    assert.partialDeepStrictEqual(y, {
+      kind: "error",
+      re: "y",
+      payload: { code: "invalid_message" },
+    });
+    // A Q&A sent to an executor this runner doesn't run isn't run.
+    assert.partialDeepStrictEqual(w, {
+      kind: "error",
+      re: "w",
+      payload: {
+        code: "invalid_message",
+        message: "This is an executor the runner doesn't run: codex",
+      },
+    });
+    assert.partialDeepStrictEqual(z, {
+      kind: "answer",
+      re: "z",
+      payload: { text: "fake answer" },
+    });
+    // What reached the executor is the one proper Q&A, and the tools and folder are what the runner decided.
+    assert.deepEqual(
+      fake.calls.map(({ message, tools, folder }) => ({
+        message,
+        tools,
+        folder,
+      })),
+      [
+        {
+          message: "read only",
+          tools: ["Read", "Grep", "Glob"],
+          folder: server.runner.folder,
+        },
+      ],
+    );
+  },
+);
+
+test(
+  "the runner recognizes a server with a different contract version and doesn't turn on",
+  winSkip(463),
+  async (t) => {
+    const server = await fakeServer(t, (socket, hello) => {
+      socket.send(
+        frame({
+          v: CONTRACT_VERSION + 1,
+          id: "w",
+          re: hello.id,
+          kind: "welcome",
+        }),
+      );
     });
 
     await assert.rejects(startRunner(server.runner), {
       code: "version_mismatch",
-      message: `The server is on v0.3.0, and this machine is on ${gitVersion()}. ${todo}`,
     });
     await server.closed;
-  }
-});
+  },
+);
 
-test("the runner closes the connection and doesn't turn on if the server refuses hello", async (t) => {
-  const server = await fakeServer(t, (socket, hello) => {
-    socket.send(
-      encode(serverToRunner, "error", { code: "internal", message: "not accepted" }, hello.id),
+test(
+  "when refused for a different contract version, the runner says what to update",
+  winSkip(463),
+  async (t) => {
+    const advice = {
+      newer: `Pull \`${gitBranch()}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`,
+      older: "The server is older. Update the server (tell whoever runs it)",
+    };
+    for (const [contract, todo] of [
+      [CONTRACT_VERSION + 1, advice.newer],
+      [CONTRACT_VERSION - 1, advice.older],
+    ] as const) {
+      // A refusal from a server with a different contract version. This shape is fixed regardless of the contract version, so it is read even with keys added later.
+      const server = await fakeServer(t, (socket, hello) => {
+        socket.send(
+          JSON.stringify({
+            v: contract,
+            id: "e",
+            re: hello.id,
+            kind: "error",
+            payload: {
+              code: "version_mismatch",
+              message: `contract version differs: received ${CONTRACT_VERSION}, here ${contract}`,
+              version: "v0.3.0",
+              contract,
+              later: "a key added by a later contract",
+            },
+          }),
+        );
+        socket.close(1008, "version_mismatch");
+      });
+
+      await assert.rejects(startRunner(server.runner), {
+        code: "version_mismatch",
+        message: `The server is on v0.3.0, and this machine is on ${gitVersion()}. ${todo}`,
+      });
+      await server.closed;
+    }
+  },
+);
+
+test(
+  "the runner closes the connection and doesn't turn on if the server refuses hello",
+  winSkip(463),
+  async (t) => {
+    const server = await fakeServer(t, (socket, hello) => {
+      socket.send(
+        encode(serverToRunner, "error", { code: "internal", message: "not accepted" }, hello.id),
+      );
+    });
+
+    await assert.rejects(startRunner(server.runner), {
+      code: "internal",
+      message: "not accepted",
+    });
+    await server.closed;
+  },
+);
+
+test(
+  "the runner doesn't wait forever for a server that doesn't answer hello",
+  winSkip(463),
+  async (t) => {
+    const server = await fakeServer(t, () => {});
+
+    await assert.rejects(
+      startRunner({ ...server.runner, welcomeTimeoutMs: 50 }),
+      /The server didn't answer/,
     );
-  });
-
-  await assert.rejects(startRunner(server.runner), {
-    code: "internal",
-    message: "not accepted",
-  });
-  await server.closed;
-});
-
-test("the runner doesn't wait forever for a server that doesn't answer hello", async (t) => {
-  const server = await fakeServer(t, () => {});
-
-  await assert.rejects(
-    startRunner({ ...server.runner, welcomeTimeoutMs: 50 }),
-    /The server didn't answer/,
-  );
-  await server.closed;
-});
+    await server.closed;
+  },
+);
 
 test("a kind not in the contract can't even be sent", () => {
   // @ts-expect-error if this line passes the type check, `npm run typecheck` fails.

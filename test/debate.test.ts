@@ -609,127 +609,150 @@ async function experimentDebate(
   return { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox };
 }
 
-test("a patch attached to a stance is applied on top of the two works merged and run in the sandbox, and if only one option passes, it becomes the conclusion before the grounds", async (t) => {
-  const { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox } = await experimentDebate(t, {
-    owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
-    // Only alice has verified grounds, but the experiment comes first.
-    alice: {
-      claim: "fix the caller",
-      evidence: ["src/money.ts:2 body of refund"],
-      patch: CALLER_PATCH,
-    },
-  });
-  const ownerOption = stanceOf("add reason");
-  const aliceOption = stanceOf("fix the caller");
-  assert.deepEqual(
-    { ...ownerOption.stances[0]?.experiment, ms: 0 },
-    { patch: REASON_PATCH, verdict: "pass", check: "sh check.sh", ms: 0 },
-  );
-  assert.equal(aliceOption.stances[0]?.experiment?.verdict, "broken");
-  assert.equal(aliceOption.stances[0]?.experiment?.patch, `${CALLER_PATCH}\n`);
-  assert.equal(aliceOption.stances[0]?.evidence[0]?.mark, "verified");
-  assert.equal(debate.state, "concluded");
-  assert.equal(debate.conclusion?.by, "experiment");
-  assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
-  // The check command runs only inside the sandbox, in a temporary worktree under the repo's Git folder.
-  for (const fake of [ownerSandbox, aliceSandbox]) {
-    assert.ok(fake.calls.some((call) => call.command.endsWith("sh check.sh")));
-    assert.ok(fake.calls.every((call) => call.folder.includes("/omagari/check-run-")));
-  }
-  // The experiment stays in the run record.
-  const post = (await postOf(world.owner, "declared"))?.channel ?? "";
-  assert.match(
-    (await world.cli("runner", "log")).stdout,
-    new RegExp(
-      `check command "sh check.sh"  debate ${post} round 1 experiment payment \\+ refund of alice  .*verdict Pass`,
-    ),
-  );
-  assert.match(
-    (await world.cliIn(desk.folder, "runner", "log")).stdout,
-    new RegExp(`debate ${post} round 1 experiment refund \\+ payment of owner  .*verdict Broken`),
-  );
-});
+test(
+  "a patch attached to a stance is applied on top of the two works merged and run in the sandbox, and if only one option passes, it becomes the conclusion before the grounds",
+  winSkip(463),
+  async (t) => {
+    const { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox } = await experimentDebate(
+      t,
+      {
+        owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
+        // Only alice has verified grounds, but the experiment comes first.
+        alice: {
+          claim: "fix the caller",
+          evidence: ["src/money.ts:2 body of refund"],
+          patch: CALLER_PATCH,
+        },
+      },
+    );
+    const ownerOption = stanceOf("add reason");
+    const aliceOption = stanceOf("fix the caller");
+    assert.deepEqual(
+      { ...ownerOption.stances[0]?.experiment, ms: 0 },
+      { patch: REASON_PATCH, verdict: "pass", check: "sh check.sh", ms: 0 },
+    );
+    assert.equal(aliceOption.stances[0]?.experiment?.verdict, "broken");
+    assert.equal(aliceOption.stances[0]?.experiment?.patch, `${CALLER_PATCH}\n`);
+    assert.equal(aliceOption.stances[0]?.evidence[0]?.mark, "verified");
+    assert.equal(debate.state, "concluded");
+    assert.equal(debate.conclusion?.by, "experiment");
+    assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
+    // The check command runs only inside the sandbox, in a temporary worktree under the repo's Git folder.
+    for (const fake of [ownerSandbox, aliceSandbox]) {
+      assert.ok(fake.calls.some((call) => call.command.endsWith("sh check.sh")));
+      assert.ok(fake.calls.every((call) => call.folder.includes("/omagari/check-run-")));
+    }
+    // The experiment stays in the run record.
+    const post = (await postOf(world.owner, "declared"))?.channel ?? "";
+    assert.match(
+      (await world.cli("runner", "log")).stdout,
+      new RegExp(
+        `check command "sh check.sh"  debate ${post} round 1 experiment payment \\+ refund of alice  .*verdict Pass`,
+      ),
+    );
+    assert.match(
+      (await world.cliIn(desk.folder, "runner", "log")).stdout,
+      new RegExp(`debate ${post} round 1 experiment refund \\+ payment of owner  .*verdict Broken`),
+    );
+  },
+);
 
-test("a debate's patches are dropped after 30 days; the claims, grounds and conclusion stay", async (t) => {
-  const { world, debate, stanceOf } = await experimentDebate(t, {
-    owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
-    alice: {
-      claim: "fix the caller",
-      evidence: ["src/money.ts:2 body of refund"],
-      patch: CALLER_PATCH,
-    },
-  });
-  assert.ok(stanceOf("add reason").stances[0]?.experiment?.patch);
-  // The test clock: 30 days shortened to 1 millisecond.
-  await world.restartServer({ contentMs: 1 });
-  await eventually(async () => {
-    const found = (await postOf(world.owner, "declared"))?.debate;
-    for (const claim of ["add reason", "fix the caller"])
-      assert.equal(
-        found?.options.find((o) => o.stances[0]?.claim === claim)?.stances[0]?.experiment?.patch,
-        "",
-      );
-  });
-  const after = (await postOf(world.owner, "declared"))?.debate;
-  assert.equal(after?.state, "concluded");
-  assert.equal(after?.conclusion?.by, debate.conclusion?.by);
-  assert.equal(
-    after?.options.find((o) => o.stances[0]?.claim === "add reason")?.stances[0]?.experiment
-      ?.verdict,
-    "pass",
-  );
-});
+test(
+  "a debate's patches are dropped after 30 days; the claims, grounds and conclusion stay",
+  winSkip(463),
+  async (t) => {
+    const { world, debate, stanceOf } = await experimentDebate(t, {
+      owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
+      alice: {
+        claim: "fix the caller",
+        evidence: ["src/money.ts:2 body of refund"],
+        patch: CALLER_PATCH,
+      },
+    });
+    assert.ok(stanceOf("add reason").stances[0]?.experiment?.patch);
+    // The test clock: 30 days shortened to 1 millisecond.
+    await world.restartServer({ contentMs: 1 });
+    await eventually(async () => {
+      const found = (await postOf(world.owner, "declared"))?.debate;
+      for (const claim of ["add reason", "fix the caller"])
+        assert.equal(
+          found?.options.find((o) => o.stances[0]?.claim === claim)?.stances[0]?.experiment?.patch,
+          "",
+        );
+    });
+    const after = (await postOf(world.owner, "declared"))?.debate;
+    assert.equal(after?.state, "concluded");
+    assert.equal(after?.conclusion?.by, debate.conclusion?.by);
+    assert.equal(
+      after?.options.find((o) => o.stances[0]?.claim === "add reason")?.stances[0]?.experiment
+        ?.verdict,
+      "pass",
+    );
+  },
+);
 
-test("if both options pass, it is not decided by the experiment and moves on to verified grounds", async (t) => {
-  const { debate, stanceOf } = await experimentDebate(t, {
-    owner: { claim: "add reason", evidence: ["src/money.ts:2 body"], patch: REASON_PATCH },
-    alice: { claim: "add reason as optional", evidence: ["words only"], patch: REASON_PATCH },
-  });
-  assert.equal(stanceOf("add reason").stances[0]?.experiment?.verdict, "pass");
-  assert.equal(stanceOf("add reason as optional").stances[0]?.experiment?.verdict, "pass");
-  assert.equal(debate.conclusion?.by, "evidence");
-  assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
-});
+test(
+  "if both options pass, it is not decided by the experiment and moves on to verified grounds",
+  winSkip(463),
+  async (t) => {
+    const { debate, stanceOf } = await experimentDebate(t, {
+      owner: { claim: "add reason", evidence: ["src/money.ts:2 body"], patch: REASON_PATCH },
+      alice: { claim: "add reason as optional", evidence: ["words only"], patch: REASON_PATCH },
+    });
+    assert.equal(stanceOf("add reason").stances[0]?.experiment?.verdict, "pass");
+    assert.equal(stanceOf("add reason as optional").stances[0]?.experiment?.verdict, "pass");
+    assert.equal(debate.conclusion?.by, "evidence");
+    assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
+  },
+);
 
-test("if there is no check command or no sandbox, 'could not run' and the reason are attached, and it moves on to the human's turn to pick", async (t) => {
-  const { debate, stanceOf, ownerSandbox, aliceSandbox } = await experimentDebate(
-    t,
-    {
-      owner: { claim: "add reason", evidence: [], patch: REASON_PATCH },
-      alice: { claim: "fix the caller", evidence: [], patch: CALLER_PATCH },
-    },
-    { check: false, aliceSandbox: false },
-  );
-  const ownerRun = stanceOf("add reason").stances[0]?.experiment;
-  assert.equal(ownerRun?.verdict, "not_run");
-  assert.match(
-    ownerRun?.reason ?? "",
-    /The default branch \(origin\/main\) has no \.omagari\.json/,
-  );
-  assert.equal(ownerRun?.check, undefined);
-  const aliceRun = stanceOf("fix the caller").stances[0]?.experiment;
-  assert.equal(aliceRun?.verdict, "not_run");
-  assert.ok(aliceRun?.reason, JSON.stringify(aliceRun));
-  assert.equal(debate.state, "choosing");
-  assert.equal(ownerSandbox.calls.length, 0);
-  assert.equal(aliceSandbox.calls.length, 0);
-});
+test(
+  "if there is no check command or no sandbox, 'could not run' and the reason are attached, and it moves on to the human's turn to pick",
+  winSkip(463),
+  async (t) => {
+    const { debate, stanceOf, ownerSandbox, aliceSandbox } = await experimentDebate(
+      t,
+      {
+        owner: { claim: "add reason", evidence: [], patch: REASON_PATCH },
+        alice: { claim: "fix the caller", evidence: [], patch: CALLER_PATCH },
+      },
+      { check: false, aliceSandbox: false },
+    );
+    const ownerRun = stanceOf("add reason").stances[0]?.experiment;
+    assert.equal(ownerRun?.verdict, "not_run");
+    assert.match(
+      ownerRun?.reason ?? "",
+      /The default branch \(origin\/main\) has no \.omagari\.json/,
+    );
+    assert.equal(ownerRun?.check, undefined);
+    const aliceRun = stanceOf("fix the caller").stances[0]?.experiment;
+    assert.equal(aliceRun?.verdict, "not_run");
+    assert.ok(aliceRun?.reason, JSON.stringify(aliceRun));
+    assert.equal(debate.state, "choosing");
+    assert.equal(ownerSandbox.calls.length, 0);
+    assert.equal(aliceSandbox.calls.length, 0);
+  },
+);
 
-test("in a debate opened by a member's request too, a stance's patch runs as an experiment, and if only one option passes, it becomes the conclusion", async (t) => {
-  const { debate, stanceOf, ownerSandbox } = await experimentDebate(
-    t,
-    {
-      owner: { claim: "put reason in note", evidence: [], patch: NOTE_PATCH },
-      alice: { claim: "fix the caller", evidence: [], patch: CALLER_PATCH },
-    },
-    { requested: true },
-  );
-  assert.equal(stanceOf("put reason in note").stances[0]?.experiment?.verdict, "pass");
-  assert.equal(stanceOf("fix the caller").stances[0]?.experiment?.verdict, "broken");
-  assert.equal(debate.conclusion?.by, "experiment");
-  assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
-  assert.ok(ownerSandbox.calls.some((call) => call.command.endsWith("sh check.sh")));
-});
+test(
+  "in a debate opened by a member's request too, a stance's patch runs as an experiment, and if only one option passes, it becomes the conclusion",
+  winSkip(463),
+  async (t) => {
+    const { debate, stanceOf, ownerSandbox } = await experimentDebate(
+      t,
+      {
+        owner: { claim: "put reason in note", evidence: [], patch: NOTE_PATCH },
+        alice: { claim: "fix the caller", evidence: [], patch: CALLER_PATCH },
+      },
+      { requested: true },
+    );
+    assert.equal(stanceOf("put reason in note").stances[0]?.experiment?.verdict, "pass");
+    assert.equal(stanceOf("fix the caller").stances[0]?.experiment?.verdict, "broken");
+    assert.equal(debate.conclusion?.by, "experiment");
+    assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
+    assert.ok(ownerSandbox.calls.some((call) => call.command.endsWith("sh check.sh")));
+  },
+);
 
 /**
  * The executor of a member whose runner goes off while holding the first join request. The first turn is held while `leave` turns off the runner, then fails (it is after shutdown so it does not reach the server),
@@ -1113,24 +1136,32 @@ const codexDebate = async (t: TestContext, sessions: (world: World) => Promise<v
   return { calls: await fake.calls(), context: mine?.context };
 };
 
-test("a Codex agent joins the debate by forking, read-only, the Codex work session the owner used on that branch", async (t) => {
-  const { calls, context } = await codexDebate(t, (world) =>
-    codexSession(process.env.CODEX_HOME ?? "", "payment-work", world.repo.folder, "payment"),
-  );
-  assert.equal(calls.length, 1);
-  const args = calls[0]?.args ?? [];
-  assert.deepEqual(args.slice(0, 2), ["exec", "fork"]);
-  assert.ok(args.includes("payment-work"));
-  assert.ok(args.includes('sandbox_mode="read-only"'));
-  assert.ok(!args.includes("other-branch"));
-  assert.ok(!calls[0]?.input.includes("taking part without context"));
-  assert.equal(context, "session");
-});
+test(
+  "a Codex agent joins the debate by forking, read-only, the Codex work session the owner used on that branch",
+  winSkip(463),
+  async (t) => {
+    const { calls, context } = await codexDebate(t, (world) =>
+      codexSession(process.env.CODEX_HOME ?? "", "payment-work", world.repo.folder, "payment"),
+    );
+    assert.equal(calls.length, 1);
+    const args = calls[0]?.args ?? [];
+    assert.deepEqual(args.slice(0, 2), ["exec", "fork"]);
+    assert.ok(args.includes("payment-work"));
+    assert.ok(args.includes('sandbox_mode="read-only"'));
+    assert.ok(!args.includes("other-branch"));
+    assert.ok(!calls[0]?.input.includes("taking part without context"));
+    assert.equal(context, "session");
+  },
+);
 
-test("if that branch has no Codex work session, the Codex agent joins without context", async (t) => {
-  const { calls, context } = await codexDebate(t, async () => {});
-  assert.equal(calls.length, 1);
-  assert.ok(!calls[0]?.args.includes("fork"));
-  assert.match(calls[0]?.input ?? "", /taking part without context/);
-  assert.equal(context, "none");
-});
+test(
+  "if that branch has no Codex work session, the Codex agent joins without context",
+  winSkip(463),
+  async (t) => {
+    const { calls, context } = await codexDebate(t, async () => {});
+    assert.equal(calls.length, 1);
+    assert.ok(!calls[0]?.args.includes("fork"));
+    assert.match(calls[0]?.input ?? "", /taking part without context/);
+    assert.equal(context, "none");
+  },
+);

@@ -6,8 +6,7 @@ import { test } from "node:test";
 const WEB = join(import.meta.dirname, "..");
 const HANGUL = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3]/;
 /** The only places Korean may live (ADR-0045): the dictionaries, and `i18n.ts` for the language's own name. */
-const ALLOWED = (path: string) =>
-  path.startsWith(join("src", "words") + "/") || path === join("src", "i18n.ts");
+const ALLOWED = (path: string) => path.startsWith("src/words/") || path === "src/i18n.ts";
 
 function files(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -19,7 +18,7 @@ function files(dir: string): string[] {
 
 test("web code has no Hangul outside the Korean dictionary", () => {
   const found = files(WEB)
-    .map((path) => relative(WEB, path))
+    .map((path) => relative(WEB, path).replaceAll("\\", "/"))
     .filter((path) => /\.(tsx?|css|html|json)$/.test(path) && !ALLOWED(path))
     .flatMap((path) =>
       readFileSync(join(WEB, path), "utf8")

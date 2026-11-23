@@ -492,32 +492,36 @@ const WSL_MOUNTS = [
   "drivers /usr/lib/wsl/drivers 9p ro 0 0",
 ].join("\n");
 
-test("it blocks reading the places where Windows drives are mounted in WSL2's mount list, and doesn't change the blocking on other machines", async (t) => {
-  const repo = await tempRepo();
-  t.after(repo.remove);
-  await merge(repo, { ".omagari.json": config({ check: "true" }) });
-  const policyOf = async (mounts?: string) => {
-    const fake = fakeSandbox();
-    const result = await checkWork({
-      folder: repo.folder,
-      remote: "origin",
-      sandbox: fake.sandbox,
-      limits: CHECK_LIMITS,
-      mounts: async () => mounts,
-    });
-    assert.equal(result.verdict, "pass", result.reason);
-    return fake.calls[0]?.policy.filesystem;
-  };
-  const wsl = await policyOf(WSL_MOUNTS);
-  assert.deepEqual(wsl?.denyRead, [homedir(), "/mnt/c", "/win/d x"]);
-  // The temporary worktree is reopened even on top of a hidden place.
-  assert.ok(
-    wsl?.allowRead?.some((p) =>
-      String(typeof p === "string" ? p : p.path).includes("omagari-check-"),
-    ),
-  );
-  assert.deepEqual((await policyOf(undefined))?.denyRead, [homedir()]);
-});
+test(
+  "it blocks reading the places where Windows drives are mounted in WSL2's mount list, and doesn't change the blocking on other machines",
+  winSkip(468),
+  async (t) => {
+    const repo = await tempRepo();
+    t.after(repo.remove);
+    await merge(repo, { ".omagari.json": config({ check: "true" }) });
+    const policyOf = async (mounts?: string) => {
+      const fake = fakeSandbox();
+      const result = await checkWork({
+        folder: repo.folder,
+        remote: "origin",
+        sandbox: fake.sandbox,
+        limits: CHECK_LIMITS,
+        mounts: async () => mounts,
+      });
+      assert.equal(result.verdict, "pass", result.reason);
+      return fake.calls[0]?.policy.filesystem;
+    };
+    const wsl = await policyOf(WSL_MOUNTS);
+    assert.deepEqual(wsl?.denyRead, [homedir(), "/mnt/c", "/win/d x"]);
+    // The temporary worktree is reopened even on top of a hidden place.
+    assert.ok(
+      wsl?.allowRead?.some((p) =>
+        String(typeof p === "string" ? p : p.path).includes("omagari-check-"),
+      ),
+    );
+    assert.deepEqual((await policyOf(undefined))?.denyRead, [homedir()]);
+  },
+);
 
 test("on plain Windows, the reason for Couldn't run is the WSL2 guidance", async () => {
   const platform = Object.getOwnPropertyDescriptor(process, "platform");

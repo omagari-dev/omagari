@@ -55,29 +55,38 @@ async function directLabels(labeler: string | undefined, branchLabeler?: string)
   }
 }
 
-test("team labels matching labeler.yml's path rules are attached to a direct-conflict post along with the kind label", async () => {
-  const labels = await directLabels(
-    text([
-      "backend:",
-      "  - changed-files:",
-      "    - any-glob-to-any-file: 'src/**'",
-      "docs:",
-      "  - changed-files:",
-      "    - any-glob-to-any-file: 'docs/**'",
-      "web:",
-      "  - head-branch: ['^payment']",
-    ]),
-    text(["other:", "  - changed-files:", "    - any-glob-to-any-file: 'src/**'"]),
-  );
-  assert.deepEqual(labels, ["Direct conflict", "backend"]);
-});
+test(
+  "team labels matching labeler.yml's path rules are attached to a direct-conflict post along with the kind label",
+  winSkip(463),
+  async () => {
+    const labels = await directLabels(
+      text([
+        "backend:",
+        "  - changed-files:",
+        "    - any-glob-to-any-file: 'src/**'",
+        "docs:",
+        "  - changed-files:",
+        "    - any-glob-to-any-file: 'docs/**'",
+        "web:",
+        "  - head-branch: ['^payment']",
+      ]),
+      text(["other:", "  - changed-files:", "    - any-glob-to-any-file: 'src/**'"]),
+    );
+    assert.deepEqual(labels, ["Direct conflict", "backend"]);
+  },
+);
 
-test("with no labeler.yml or one of the wrong shape, only the kind label is attached and the server doesn't stop", async () => {
-  assert.deepEqual(await directLabels(undefined), ["Direct conflict"]);
-  assert.deepEqual(await directLabels("- wrong\n- shape"), ["Direct conflict"]);
-});
+test(
+  "with no labeler.yml or one of the wrong shape, only the kind label is attached and the server doesn't stop",
+  winSkip(463),
+  async () => {
+    assert.deepEqual(await directLabels(undefined), ["Direct conflict"]);
+    assert.deepEqual(await directLabels("- wrong\n- shape"), ["Direct conflict"]);
+  },
+);
 
 test("even if labeler.yml takes long to process, it doesn't hold up the server, and is read without that glob", {
+  ...winSkip(463),
   timeout: 60_000,
 }, async () => {
   const braces = Array.from({ length: 24 }, () => "{a,b}").join("");
