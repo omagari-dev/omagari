@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { plist, unit } from "./service.ts";
+import { plist, task, unit } from "./service.ts";
 
 const service = {
   args: [
@@ -65,5 +65,20 @@ Restart=on-failure
 [Install]
 WantedBy=default.target
 `,
+  );
+});
+
+test("the Windows task starts at logon, restarts on failure, and cmd.exe logs the runner's output", () => {
+  const xml = task({
+    args: ["C:\\n&n\\node.exe", "main.ts", "runner", "background"],
+    env: { PATH: "C:\\bin" },
+    log: "C:\\log",
+  });
+  assert.match(xml, /<LogonTrigger>/);
+  assert.match(xml, /<RestartOnFailure>/);
+  assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
+  assert.match(
+    xml,
+    /set "PATH=C:\\bin"&amp;&amp; "C:\\n&amp;n\\node.exe" "main.ts" "runner" "background" &gt;&gt; "C:\\log" 2&gt;&amp;1/,
   );
 });

@@ -28,7 +28,7 @@ test("with a GitHub App, an expiring token is refreshed before GitHub calls, so 
 
 test(
   "when GitHub rejects the refresh token, the session ends cleanly, and the web and CLI ask to sign in again",
-  winSkip(467),
+  winSkip(483),
   async (t) => {
     const world = await startWorld({
       recheckMs: 50,

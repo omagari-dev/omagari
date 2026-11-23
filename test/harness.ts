@@ -989,8 +989,9 @@ export async function startWorld(
   const bin = join(data, "bin");
   await mkdir(bin);
   await shim(bin, "claude", FAKE_CLAUDE);
-  // `omagari setup` registers the background runner with launchd or systemd. Fakes stand in for both, and the plist goes to a temp home (ADR-0050).
-  for (const name of ["launchctl", "systemctl"]) await shim(bin, name, FAKE_SERVICE, name);
+  // `omagari setup` registers the background runner with launchd, systemd or Task Scheduler. Fakes stand in for all three, and the plist goes to a temp home (ADR-0050).
+  for (const name of ["launchctl", "systemctl", "schtasks"])
+    await shim(bin, name, FAKE_SERVICE, name);
   const home = join(data, "home");
   const serviceCalls = join(data, "service-calls.jsonl");
   const cliEnv = () => ({

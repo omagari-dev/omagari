@@ -15,7 +15,6 @@ import {
   REPO,
   startWorld,
   tempRepo,
-  winSkip,
   writer,
 } from "./harness.ts";
 
@@ -210,6 +209,10 @@ const claudeInput = {
 
 const patch = (...files: string[]) => ["*** Begin Patch", ...files, "*** End Patch"].join("\n");
 
+/** Claude Code's hook on Windows is `command` plus `args` (no shell); put it back in one line for the test's shell. */
+const oneLine = ({ command, args }: { command: string; args?: string[] }) =>
+  args ? [command, ...args].map((word) => `'${word}'`).join(" ") : command;
+
 /** Runs the installed command as an agent and returns the text it injected. The hook exits with 0 and writes nothing to stderr. */
 async function runInstalled(world: World, command: string, input: { hook_event_name: string }) {
   const { code, stdout, stderr } = await world.shell(command, JSON.stringify(input));
@@ -220,87 +223,80 @@ async function runInstalled(world: World, command: string, input: { hook_event_n
   return hookSpecificOutput.additionalContext as string;
 }
 
-test(
-  "omagari install also installs two hooks and a one-line status skill for Codex and tells you to trust them in /hooks, and the installed hooks inject the same text as Claude Code from Codex's input",
-  winSkip(467),
-  async (t) => {
-    const world = await startWorld({ observeMs: 50 });
-    t.after(world.stop);
-    world.github.grant("alice");
-    const desk = await world.desk(await world.login("alice"));
-    t.after(desk.remove);
-    await writer(desk.folder)("pay.ts", "pay\n");
-    const hooksFile = join(world.codex, "hooks.json");
-    const skillFile = join(world.codex, "skills", "omagari-status", "SKILL.md");
+test("omagari install also installs two hooks and a one-line status skill for Codex and tells you to trust them in /hooks, and the installed hooks inject the same text as Claude Code from Codex's input", async (t) => {
+  const world = await startWorld({ observeMs: 50 });
+  t.after(world.stop);
+  world.github.grant("alice");
+  const desk = await world.desk(await world.login("alice"));
+  t.after(desk.remove);
+  await writer(desk.folder)("pay.ts", "pay\n");
+  const hooksFile = join(world.codex, "hooks.json");
+  const skillFile = join(world.codex, "skills", "omagari-status", "SKILL.md");
 
-    const installed = await world.setup();
-    assert.equal(installed.code, 0, installed.stderr);
-    const [, codexLine] = installed.stdout.split("\n");
-    assert.match(installed.stdout, /Open \/hooks in Codex and trust the two Omagari hooks/);
-    assert.ok(
-      codexLine?.startsWith(
-        `Codex: installed the session-start and pre-edit hooks in ${hooksFile} and the status line skill in ${skillFile}`,
-      ),
-    );
-    assert.match(codexLine ?? "", /Open \/hooks in Codex and trust both hooks for them to run/);
-    assert.equal(
-      await readFile(skillFile, "utf8"),
-      await readFile(join(world.claude, "skills", "omagari-status", "SKILL.md"), "utf8"),
-    );
+  const installed = await world.setup();
+  assert.equal(installed.code, 0, installed.stderr);
+  const [, codexLine] = installed.stdout.split("\n");
+  assert.match(installed.stdout, /Open \/hooks in Codex and trust the two Omagari hooks/);
+  assert.ok(
+    codexLine?.startsWith(
+      `Codex: installed the session-start and pre-edit hooks in ${hooksFile} and the status line skill in ${skillFile}`,
+    ),
+  );
+  assert.match(codexLine ?? "", /Open \/hooks in Codex and trust both hooks for them to run/);
+  assert.equal(
+    await readFile(skillFile, "utf8"),
+    await readFile(join(world.claude, "skills", "omagari-status", "SKILL.md"), "utf8"),
+  );
 
-    // Codex's matcher is a regex. Session start matches however it started, and the pre-edit hook matches only apply_patch and shell commands (to hand over the inbox).
-    const { hooks }: { hooks: Record<string, Group[]> } = JSON.parse(
-      await readFile(hooksFile, "utf8"),
-    );
-    const matching = (event: string, value: string) =>
-      (hooks[event] ?? [])
-        .filter(({ matcher }) => !matcher || matcher === "*" || new RegExp(matcher).test(value))
-        .flatMap((group) => group.hooks.map((handler) => handler.command));
-    for (const source of ["startup", "resume", "clear", "compact", "fork"]) {
-      assert.equal(matching("SessionStart", source).length, 1, source);
-    }
-    for (const tool of ["apply_patch", "Bash", "exec_command"]) {
-      assert.equal(matching("PreToolUse", tool).length, 1, tool);
-    }
-    for (const tool of ["mcp__fs__apply_patch", "update_plan", "Bashful"]) {
-      assert.deepEqual(matching("PreToolUse", tool), [], tool);
-    }
-    const [start] = matching("SessionStart", "startup");
-    const [edit] = matching("PreToolUse", "apply_patch");
-    assert.match(start ?? "", /\/packages\/hooks\/src\/main\.ts' codex$/);
-    assert.equal(edit, start);
+  // Codex's matcher is a regex. Session start matches however it started, and the pre-edit hook matches only apply_patch and shell commands (to hand over the inbox).
+  const { hooks }: { hooks: Record<string, Group[]> } = JSON.parse(
+    await readFile(hooksFile, "utf8"),
+  );
+  const matching = (event: string, value: string) =>
+    (hooks[event] ?? [])
+      .filter(({ matcher }) => !matcher || matcher === "*" || new RegExp(matcher).test(value))
+      .flatMap((group) => group.hooks.map((handler) => handler.command));
+  for (const source of ["startup", "resume", "clear", "compact", "fork"]) {
+    assert.equal(matching("SessionStart", source).length, 1, source);
+  }
+  for (const tool of ["apply_patch", "Bash", "exec_command"]) {
+    assert.equal(matching("PreToolUse", tool).length, 1, tool);
+  }
+  for (const tool of ["mcp__fs__apply_patch", "update_plan", "Bashful"]) {
+    assert.deepEqual(matching("PreToolUse", tool), [], tool);
+  }
+  const [start] = matching("SessionStart", "startup");
+  const [edit] = matching("PreToolUse", "apply_patch");
+  assert.match(start ?? "", /[\\/]packages[\\/]hooks[\\/]src[\\/]main\.ts' codex$/);
+  assert.equal(edit, start);
 
-    // In the same situation it injects the same text as Claude Code's hook.
-    const claude = JSON.parse(await readFile(join(world.claude, "settings.json"), "utf8")).hooks;
-    const claudeStart = claude.SessionStart.at(-1).hooks[0].command;
-    const folder = world.repo.folder;
-    const situation = await eventually(async () => {
-      const said = await runInstalled(world, start ?? "", codexInput.sessionStart(folder));
-      assert.match(said, /<omagari-situation>\n- alice · branch "main" · "Editing pay\.ts"/);
-      return said;
-    });
-    assert.equal(
-      await runInstalled(world, claudeStart, claudeInput.sessionStart(folder)),
-      situation,
-    );
-    const nearby = await runInstalled(
-      world,
-      edit ?? "",
-      codexInput.applyPatch(folder, patch("*** Update File: pay.ts", "@@", "-pay", "+pay()")),
-    );
-    assert.match(
-      nearby,
-      /^Omagari: other Work is also changing the file you're about to edit, "pay\.ts"/,
-    );
-    const claudeEdit = claude.PreToolUse.at(-1).hooks[0].command;
-    assert.equal(await runInstalled(world, claudeEdit, claudeInput.edit(folder, "pay.ts")), nearby);
+  // In the same situation it injects the same text as Claude Code's hook.
+  const claude = JSON.parse(await readFile(join(world.claude, "settings.json"), "utf8")).hooks;
+  const claudeStart = oneLine(claude.SessionStart.at(-1).hooks[0]);
+  const folder = world.repo.folder;
+  const situation = await eventually(async () => {
+    const said = await runInstalled(world, start ?? "", codexInput.sessionStart(folder));
+    assert.match(said, /<omagari-situation>\n- alice · branch "main" · "Editing pay\.ts"/);
+    return said;
+  });
+  assert.equal(await runInstalled(world, claudeStart, claudeInput.sessionStart(folder)), situation);
+  const nearby = await runInstalled(
+    world,
+    edit ?? "",
+    codexInput.applyPatch(folder, patch("*** Update File: pay.ts", "@@", "-pay", "+pay()")),
+  );
+  assert.match(
+    nearby,
+    /^Omagari: other Work is also changing the file you're about to edit, "pay\.ts"/,
+  );
+  const claudeEdit = oneLine(claude.PreToolUse.at(-1).hooks[0]);
+  assert.equal(await runInstalled(world, claudeEdit, claudeInput.edit(folder, "pay.ts")), nearby);
 
-    // Even after installing again, only one remains.
-    const first = await readFile(hooksFile, "utf8");
-    assert.equal((await world.setup()).code, 0);
-    assert.equal(await readFile(hooksFile, "utf8"), first);
-  },
-);
+  // Even after installing again, only one remains.
+  const first = await readFile(hooksFile, "utf8");
+  assert.equal((await world.setup()).code, 0);
+  assert.equal(await readFile(hooksFile, "utf8"), first);
+});
 
 test("when one Codex patch edits several files, it injects nearby work per file, and does not inject the same thing again in the same session", async (t) => {
   const world = await startWorld({ observeMs: 50 });
