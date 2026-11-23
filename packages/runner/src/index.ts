@@ -1537,6 +1537,21 @@ export async function startRunner(options: {
       // It runs on this machine only, without calling the server. It doesn't wait in the Q&A queue.
       const at = new Date().toISOString();
       const { folder: tree } = message.payload;
+      // Only this runner's own repo (its worktrees share the git common dir). Anything else, or a non-repo, is refused.
+      const own = await runnerPaths(tree).then(
+        (theirs) => theirs.log === paths.log,
+        () => false,
+      );
+      if (!own)
+        return encode(
+          runnerToCli,
+          "error",
+          {
+            code: "invalid_message",
+            message: "This runner checks only its own repo, not this folder",
+          },
+          message.id,
+        );
       const result = await checkWork({ folder: tree, ...checkWith() });
       const record: CheckRecord = {
         at,
