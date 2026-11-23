@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
+import { onPath } from "@omagari/contract/shim";
 import {
   backgroundSocket,
   OutsideAccounts,
@@ -94,7 +95,7 @@ export async function background(foldersFile: string, start: (folder: string) =>
   /** The working trees of the repo `folder` is in, main working tree first. */
   const treesOf = async (folder: string) => {
     const { stdout } = await execFileAsync(
-      "git",
+      onPath("git"),
       ["-C", folder, "worktree", "list", "--porcelain", "-z"],
       { maxBuffer: 16 * 1024 * 1024 },
     ).catch(() => ({ stdout: "" }));

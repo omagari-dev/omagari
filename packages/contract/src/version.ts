@@ -1,6 +1,7 @@
 // This install's version: the npm package's (ADR-0048), or the clone's from Git (ADR-0019). Node only. Kept apart from index.ts, which the web reads.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { onPath } from "./shim.ts";
 
 /**
  * The npm package this runs from and the dist-tag it was published under (`latest` or `next`), which the build writes as
@@ -19,7 +20,7 @@ export function installedPackage(): { version: string; tag: string } | undefined
 /** Calls Git in this checkout. If it fails (no Git, not a clone, no tags), there's none. */
 function git(...args: string[]) {
   try {
-    return execFileSync("git", args, {
+    return execFileSync(onPath("git"), args, {
       cwd: import.meta.dirname,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],

@@ -6,6 +6,7 @@ import { lstat, readFile, readlink } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { ObservedFile, ShareLevel, Work } from "@omagari/contract";
+import { onPath } from "@omagari/contract/shim";
 import { compare, parsable, usesIn } from "./symbols.ts";
 
 const execFileAsync = promisify(execFile);
@@ -52,7 +53,7 @@ function asText(bytes: Buffer) {
 
 const git = async (folder: string, ...args: string[]) =>
   (
-    await execFileAsync("git", ["-C", folder, ...args], {
+    await execFileAsync(onPath("git"), ["-C", folder, ...args], {
       // Doesn't do side writes that need a lock, like the index refresh.
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       maxBuffer: 64 * 1024 * 1024,

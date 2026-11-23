@@ -25,6 +25,7 @@ import {
   shareLevelsText,
   VERDICT_LABELS,
 } from "@omagari/contract";
+import { onPath } from "@omagari/contract/shim";
 import { checkoutVersion, installedPackage } from "@omagari/contract/version";
 import {
   acceptedRemotes,
@@ -216,7 +217,12 @@ if (!(command === "runner" && (sub === undefined || sub.startsWith("--") || sub 
  * Appends nothing if you're outside a repo, not on a branch, the runner is off, or nothing is backed up.
  */
 async function mailbox() {
-  const branch = await promisify(execFile)("git", ["symbolic-ref", "--quiet", "--short", "HEAD"])
+  const branch = await promisify(execFile)(onPath("git"), [
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    "HEAD",
+  ])
     .then(({ stdout }) => stdout.trim())
     .catch(() => undefined);
   if (!branch) return;
@@ -487,7 +493,7 @@ function seconds(ms: number) {
  */
 async function check() {
   const folder = (
-    await promisify(execFile)("git", ["rev-parse", "--show-toplevel"]).catch(() => {
+    await promisify(execFile)(onPath("git"), ["rev-parse", "--show-toplevel"]).catch(() => {
       throw new Error("This folder is not a Git repo. Use it in a work folder");
     })
   ).stdout.trim();
@@ -646,7 +652,12 @@ async function status() {
  * Codex doesn't document any variable it puts in the shell, so we don't send one. Codex Work is identified only by hooks.
  */
 async function setStatus(text: string) {
-  const branch = await promisify(execFile)("git", ["symbolic-ref", "--quiet", "--short", "HEAD"])
+  const branch = await promisify(execFile)(onPath("git"), [
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    "HEAD",
+  ])
     .then(({ stdout }) => stdout.trim())
     .catch(() => {
       throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
@@ -675,7 +686,7 @@ async function target(path: string | undefined) {
     },
   });
   const git = (...args: string[]) =>
-    promisify(execFile)("git", args).then(({ stdout }) => stdout.trim());
+    promisify(execFile)(onPath("git"), args).then(({ stdout }) => stdout.trim());
   const branch = await git("symbolic-ref", "--quiet", "--short", "HEAD").catch(() => {
     throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
   });
@@ -831,7 +842,7 @@ async function metrics(days: string | undefined) {
 
 /** The branch checked out in this folder. Throws if it isn't a branch. */
 async function currentBranch() {
-  return promisify(execFile)("git", ["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
+  return promisify(execFile)(onPath("git"), ["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
     ({ stdout }) => stdout.trim(),
     () => {
       throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
@@ -934,7 +945,9 @@ async function wait() {
   if (values.path === undefined && !Number.isInteger(id))
     throw new Error(`Not a question number: ${positionals[0]}`);
   const branch = await currentBranch();
-  const top = (await promisify(execFile)("git", ["rev-parse", "--show-toplevel"])).stdout.trim();
+  const top = (
+    await promisify(execFile)(onPath("git"), ["rev-parse", "--show-toplevel"])
+  ).stdout.trim();
   const path =
     values.path === undefined
       ? undefined
