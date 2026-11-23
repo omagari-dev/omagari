@@ -165,7 +165,7 @@ test("one omagari install sets up the two hooks and the status-line skill in Cla
   );
 
   // The skill's description is always in the agent's context; the body is read when the agent uses the skill.
-  const skill = await readFile(skillFile, "utf8");
+  const skill = (await readFile(skillFile, "utf8")).replaceAll("\r\n", "\n"); // Git on Windows may check out CRLF
   const [, frontmatter = "", body = ""] = skill.split(/^---\n/m);
   assert.match(frontmatter, /^name: omagari-status$/m);
   const description = /^description: (.+)$/m.exec(frontmatter)?.[1] ?? "";

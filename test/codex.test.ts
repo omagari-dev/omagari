@@ -209,6 +209,10 @@ const claudeInput = {
 
 const patch = (...files: string[]) => ["*** Begin Patch", ...files, "*** End Patch"].join("\n");
 
+/** Claude Code's hook on Windows is `command` plus `args` (no shell); put it back in one line for the test's shell. */
+const oneLine = ({ command, args }: { command: string; args?: string[] }) =>
+  args ? [command, ...args].map((word) => `'${word}'`).join(" ") : command;
+
 /** Runs the installed command as an agent and returns the text it injected. The hook exits with 0 and writes nothing to stderr. */
 async function runInstalled(world: World, command: string, input: { hook_event_name: string }) {
   const { code, stdout, stderr } = await world.shell(command, JSON.stringify(input));
@@ -268,7 +272,7 @@ test("omagari install also installs two hooks and a one-line status skill for Co
 
   // In the same situation it injects the same text as Claude Code's hook.
   const claude = JSON.parse(await readFile(join(world.claude, "settings.json"), "utf8")).hooks;
-  const claudeStart = claude.SessionStart.at(-1).hooks[0].command;
+  const claudeStart = oneLine(claude.SessionStart.at(-1).hooks[0]);
   const folder = world.repo.folder;
   const situation = await eventually(async () => {
     const said = await runInstalled(world, start ?? "", codexInput.sessionStart(folder));
@@ -285,7 +289,7 @@ test("omagari install also installs two hooks and a one-line status skill for Co
     nearby,
     /^Omagari: other Work is also changing the file you're about to edit, "pay\.ts"/,
   );
-  const claudeEdit = claude.PreToolUse.at(-1).hooks[0].command;
+  const claudeEdit = oneLine(claude.PreToolUse.at(-1).hooks[0]);
   assert.equal(await runInstalled(world, claudeEdit, claudeInput.edit(folder, "pay.ts")), nearby);
 
   // Even after installing again, only one remains.
