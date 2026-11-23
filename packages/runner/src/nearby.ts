@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { LineRange, NearbyWork, WorkView } from "@omagari/contract";
+import { onPath } from "@omagari/contract/shim";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,7 +37,7 @@ export async function nearby(
 export const gitIn =
   (folder: string) =>
   (...args: string[]) =>
-    execFileAsync("git", ["-C", folder, ...args], {
+    execFileAsync(onPath("git"), ["-C", folder, ...args], {
       encoding: "buffer",
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       maxBuffer: 64 * 1024 * 1024,

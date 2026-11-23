@@ -52,7 +52,7 @@ import {
   type WorkRef,
   type WorkView,
 } from "@omagari/contract";
-import { execShim, spawnShim } from "@omagari/contract/shim";
+import { execShim, onPath, spawnShim } from "@omagari/contract/shim";
 import { checkoutBranch, checkoutVersion, installedPackage } from "@omagari/contract/version";
 import {
   CHECK_LIMITS,
@@ -542,7 +542,7 @@ export async function removeStaleSocket(path: string) {
 
 export async function runnerPaths(folder: string) {
   const { stdout } = await execFileAsync(
-    "git",
+    onPath("git"),
     ["rev-parse", "--path-format=absolute", "--git-common-dir"],
     { cwd: folder },
   );
@@ -752,7 +752,7 @@ function readDraft(answer: string) {
 /** The code a runner session saw: the branch and commit now checked out in the registered folder, and whether there are uncommitted changes. */
 async function readSource(folder: string): Promise<Source> {
   const git = async (...args: string[]) =>
-    (await execFileAsync("git", ["-C", folder, ...args])).stdout.trim();
+    (await execFileAsync(onPath("git"), ["-C", folder, ...args])).stdout.trim();
   const [branch, commit, status] = await Promise.all([
     git("symbolic-ref", "--quiet", "--short", "HEAD").catch(() => null),
     git("rev-parse", "HEAD"),
@@ -770,7 +770,7 @@ const GITHUB_REMOTE = /(?:@|\/\/)github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?
  */
 export async function readRepo(folder: string) {
   const git = async (...args: string[]) =>
-    (await execFileAsync("git", ["-C", folder, ...args])).stdout.trim();
+    (await execFileAsync(onPath("git"), ["-C", folder, ...args])).stdout.trim();
   const top = await git("rev-parse", "--show-toplevel").catch(() => {
     throw new Error(`Not a Git repo folder: ${folder}`);
   });

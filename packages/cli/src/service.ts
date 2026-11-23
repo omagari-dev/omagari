@@ -4,7 +4,7 @@ import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, release } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execShim } from "@omagari/contract/shim";
+import { execShim, onPath } from "@omagari/contract/shim";
 import { stopBackground } from "@omagari/runner";
 
 const MAIN = fileURLToPath(new URL(`./main${extname(import.meta.filename)}`, import.meta.url));
@@ -146,7 +146,7 @@ async function registerWindows(service: Service) {
   // ponytail: the Run key has no restart on crash; the runner restarting its own child comes with the hand check.
   const command = `cmd.exe /d /s /c "${windowsCommand(service)}"`;
   await run("reg", "add", RUN_KEY, "/v", TASK, "/t", "REG_SZ", "/d", command, "/f");
-  spawn("cmd.exe", ["/d", "/s", "/c", windowsCommand(service)], {
+  spawn(process.env.ComSpec || onPath("cmd.exe"), ["/d", "/s", "/c", windowsCommand(service)], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,

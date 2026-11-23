@@ -21,6 +21,7 @@ import {
   shareLevelsText,
   type WorkView,
 } from "@omagari/contract";
+import { onPath } from "@omagari/contract/shim";
 import {
   callBackground,
   callRunner,
@@ -189,7 +190,7 @@ async function sessionStart(executor: ExecutorId) {
 
 /** The branch checked out in this folder. None if it isn't a branch (detached HEAD). */
 function currentBranch() {
-  return promisify(execFile)("git", ["-C", cwd, "symbolic-ref", "--short", "HEAD"])
+  return promisify(execFile)(onPath("git"), ["-C", cwd, "symbolic-ref", "--short", "HEAD"])
     .then(({ stdout }) => stdout.trim())
     .catch(() => undefined);
 }
@@ -375,7 +376,7 @@ async function preEdit(event: HookEvent, executor: ExecutorId) {
   if (!paths) return;
   // Paths in an observation are relative to the top of the work folder. Files outside the repo aren't Omagari's concern.
   const top = (
-    await promisify(execFile)("git", ["-C", cwd, "rev-parse", "--show-toplevel"])
+    await promisify(execFile)(onPath("git"), ["-C", cwd, "rev-parse", "--show-toplevel"])
   ).stdout.trim();
   const inRepo = await Promise.all(
     targets.map(async (target) => {

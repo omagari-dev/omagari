@@ -28,6 +28,7 @@ import {
   type ObservedFile,
   type Verdict,
 } from "@omagari/contract";
+import { onPath } from "@omagari/contract/shim";
 import { secret } from "./observe.ts";
 
 const execFileAsync = promisify(execFile);
@@ -169,7 +170,7 @@ export const checkReading = (read: CheckRead): CheckReading =>
 
 const gitOut = async (folder: string, args: string[], env?: Record<string, string>) =>
   (
-    await execFileAsync("git", ["-C", folder, ...args], {
+    await execFileAsync(onPath("git"), ["-C", folder, ...args], {
       env: { ...process.env, ...env },
       maxBuffer: 64 * 1024 * 1024,
     })
@@ -393,7 +394,7 @@ async function holdInJob(pid: number) {
     "[OmagariJob]::End($job)",
   ].join("\n");
   const helper = spawn(
-    "powershell.exe",
+    onPath("powershell.exe"),
     [
       "-NoProfile",
       "-NonInteractive",
@@ -614,7 +615,7 @@ export async function workTree(folder: string, index: string) {
     .filter((path) => path && secret(path));
   if (secrets.length > 0) {
     const drop = execFileAsync(
-      "git",
+      onPath("git"),
       ["-C", folder, "update-index", "--force-remove", "-z", "--stdin"],
       {
         env: { ...process.env, ...withIndex },
@@ -670,11 +671,11 @@ async function mergeTree(
       lines.push(`0 ${"0".repeat(40)}\t${file.path}`);
       continue;
     }
-    const blob = execFileAsync("git", ["-C", folder, "hash-object", "-w", "--stdin"]);
+    const blob = execFileAsync(onPath("git"), ["-C", folder, "hash-object", "-w", "--stdin"]);
     blob.child.stdin?.end(file.content);
     lines.push(`100644 ${(await blob).stdout.trim()}\t${file.path}`);
   }
-  const update = execFileAsync("git", ["-C", folder, "update-index", "--index-info"], {
+  const update = execFileAsync(onPath("git"), ["-C", folder, "update-index", "--index-info"], {
     env: { ...process.env, ...withIndex },
   });
   update.child.stdin?.end(lines.map((line) => `${line}\n`).join(""));
@@ -682,7 +683,7 @@ async function mergeTree(
   const their = await gitOut(folder, ["write-tree"], withIndex);
   if (alone === "theirs") return { tree: their };
   // On conflict it exits with 1; the first line is the merged tree (with conflict markers), and after that are the conflicting paths.
-  const merged = await execFileAsync("git", [
+  const merged = await execFileAsync(onPath("git"), [
     "-C",
     folder,
     "merge-tree",
@@ -734,9 +735,13 @@ async function patchTree(folder: string, run: string, tree: string, patch: strin
     GIT_INDEX_FILE: join(run, "patch-index"),
   };
   await gitOut(folder, ["read-tree", tree], withIndex);
-  const apply = execFileAsync("git", ["-C", folder, "apply", "--cached", "--whitespace=nowarn"], {
-    env: { ...process.env, ...withIndex },
-  });
+  const apply = execFileAsync(
+    onPath("git"),
+    ["-C", folder, "apply", "--cached", "--whitespace=nowarn"],
+    {
+      env: { ...process.env, ...withIndex },
+    },
+  );
   apply.child.stdin?.end(patch);
   const failed = await apply.then(
     () => undefined,
