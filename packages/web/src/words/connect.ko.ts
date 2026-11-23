@@ -72,4 +72,14 @@ export const connectKo: Words["connect"] = {
   demo: "데모예요. 여기서 한 건 이 탭에만 남고 새로 고치면 사라져요.",
   demoNeedsServer: "그건 진짜 서버와 에이전트가 있어야 해서 데모에선 안 돼요.",
   openApp: "앱 열기",
+  update: {
+    title: "새 버전이 있어요",
+    versions: (from, to) => `${from} → ${to}`,
+    now: "지금 업데이트",
+    updating: "업데이트하는 중…",
+    restarts: "러너가 알아서 다시 켜져요.",
+    failed: "업데이트하지 못했어요",
+    offline: "러너가 꺼져 있어요.",
+    command: "대신 터미널에서 이걸 실행해 주세요.",
+  },
 };

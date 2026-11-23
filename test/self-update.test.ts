@@ -16,6 +16,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { type TestContext, test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { CONTRACT_VERSION } from "@omagari/contract";
 import { type WebSocket, WebSocketServer } from "ws";
@@ -68,7 +69,11 @@ const welcome: Reply = (socket, hello) =>
     }),
   );
 
-async function setup(t: TestContext, reply: Reply, npm?: "ok" | "fail") {
+/**
+ * `npm`: how the fake npm answers. `ok` installs `0.0.0-dev.2`, `fail` refuses to install, `current` says the newest is the installed `0.0.0-dev.1`.
+ * `npm view` answers `0.0.0-dev.2` except with `current`.
+ */
+async function setup(t: TestContext, reply: Reply, npm?: "ok" | "fail" | "current") {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "omagari-update-")));
   const env = {
     GIT_CONFIG_GLOBAL: "/dev/null",
@@ -129,6 +134,10 @@ async function setup(t: TestContext, reply: Reply, npm?: "ok" | "fail") {
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 const installed = ${JSON.stringify(installed)};
 appendFileSync(installed + "/npm-called", process.argv.slice(2).join(" ") + "\\n");
+if (process.argv[2] === "view") {
+  console.log(${JSON.stringify(npm)} === "current" ? "0.0.0-dev.1" : "0.0.0-dev.2");
+  process.exit(0);
+}
 if (${JSON.stringify(npm)} === "fail") {
   console.error("EACCES: permission denied, mkdir '/usr/local/lib/node_modules/omagari'");
   process.exit(243);
@@ -146,11 +155,15 @@ writeFileSync(pkg, readFileSync(pkg, "utf8").replace("0.0.0-dev.1", "0.0.0-dev.2
     await writeFile(join(bin, "npm.cmd"), `@"${process.execPath}" "${join(bin, "npm")}" %*\r\n`);
 
   const hellos: number[] = [];
+  /** Everything the runners sent, in order. */
+  // biome-ignore lint/suspicious/noExplicitAny: raw frame
+  const frames: { kind: string; re?: string; payload: any }[] = [];
   const server = new WebSocketServer({ port: 0 });
   await once(server, "listening");
   server.on("connection", (socket) =>
     socket.on("message", (data) => {
       const hello: Hello & { kind: string } = JSON.parse(String(data));
+      frames.push(JSON.parse(String(data)));
       if (hello.kind !== "hello") return;
       hellos.push(hello.v);
       reply(socket, hello, hellos.length);
@@ -197,26 +210,29 @@ writeFileSync(pkg, readFileSync(pkg, "utf8").replace("0.0.0-dev.1", "0.0.0-dev.2
     );
     await git(origin, "commit", "-am", `contract ${to}`);
   };
-  /** Starts the runner, waits until `hellos` has `count` entries, then stops it. */
-  const keep = async (count: number) => {
+  /** Starts the runner, waits until `hellos` has `count` entries (or `until` passes), then stops it. */
+  const keep = async (count: number, until?: () => unknown) => {
     const child = spawn(
       process.execPath,
       [join(installed, "packages/cli/src/main.ts"), ...runner],
       {
         cwd: observed.folder,
         env: { ...process.env, ...cliEnv },
-        stdio: "ignore",
+        stdio: process.env.DEBUG_UPDATE ? "inherit" : "ignore",
       },
     );
     const exited = once(child, "exit");
     try {
-      await eventually(() => assert.ok(hellos.length >= count, `${hellos.length} hellos`), 30_000);
+      await eventually(
+        () => (until ? until() : assert.ok(hellos.length >= count, `${hellos.length} hellos`)),
+        30_000,
+      );
     } finally {
       child.kill("SIGINT");
       await exited;
     }
   };
-  return { git, origin, installed, observed, hellos, omagari, bump, keep };
+  return { git, origin, installed, observed, hellos, frames, omagari, bump, keep };
 }
 
 test("when the server's contract is newer, the installed clone is fast-forwarded, dependencies are installed and it restarts, what was pulled is recorded and the observed folder is untouched", async (t) => {
@@ -357,4 +373,67 @@ test("when the npm install fails, nothing changes and what to run is shown", asy
     (await world.omagari("runner", "log")).stdout.trim(),
     "The runner hasn't run anything yet",
   );
+});
+
+/** Accepts hello, then sends `update` frames with these payloads (ids `u0`, `u1`, ...), like a server the owner asked (ADR-0061). */
+const asked =
+  (...payloads: object[]): Reply =>
+  (socket, hello, n) => {
+    welcome(socket, hello, n);
+    if (n === 1)
+      payloads.forEach((payload, i) => {
+        socket.send(JSON.stringify({ v: hello.v, id: `u${i}`, kind: "update", payload }));
+      });
+  };
+
+const npmCalls = async (installed: string) =>
+  (await readFile(join(installed, "npm-called"), "utf8").catch(() => "")).trim().split("\n");
+const versions = (world: Awaited<ReturnType<typeof setup>>) =>
+  world.frames.filter((f) => f.kind === "hello").map((f) => f.payload.version);
+
+test("asked to update, an npm runner reads its own dist-tag from npm, installs it, restarts and says its new version", async (t) => {
+  const world = await setup(t, asked({}), "ok");
+  await world.keep(2);
+  assert.deepEqual(versions(world), ["0.0.0-dev.1", "0.0.0-dev.2"]);
+  assert.deepEqual(await npmCalls(world.installed), [
+    "view omagari@next version",
+    "i -g omagari@next",
+  ]);
+  const log = await world.omagari("runner", "log");
+  assert.match(log.stdout, /Runner updated omagari@next 0\.0\.0-dev\.1 → 0\.0\.0-dev\.2/);
+});
+
+test("a server can't name what the runner installs, and a failed install is answered with the reason", async (t) => {
+  // A hijacked server adds a version, a package and a URL: the runner refuses the frame and calls nothing. The plain one fails to install.
+  const world = await setup(
+    t,
+    asked({ version: "6.6.6", package: "evil", url: "https://evil.invalid/omagari.tgz" }, {}),
+    "fail",
+  );
+  const replies = () => world.frames.filter((f) => f.kind === "error");
+  await world.keep(1, () => assert.equal(replies().length, 2));
+  const [refused, failed] = [
+    replies().find((f) => f.re === "u0"),
+    replies().find((f) => f.re === "u1"),
+  ];
+  assert.equal(refused?.payload.code, "invalid_message");
+  assert.match(failed?.payload.message, /`npm i -g omagari@next` failed.*EACCES/s);
+  assert.deepEqual(await npmCalls(world.installed), [
+    "view omagari@next version",
+    "i -g omagari@next",
+  ]);
+  assert.deepEqual(versions(world), ["0.0.0-dev.1"]);
+  assert.match(await readFile(join(world.installed, "package.json"), "utf8"), /0\.0\.0-dev\.1/);
+});
+
+test("asked to update while already on the newest version, the runner only reads npm", async (t) => {
+  const world = await setup(t, asked({}), "current");
+  // Kept running a little after npm answered, to see it installs nothing.
+  await world.keep(1, async () => {
+    assert.deepEqual(await npmCalls(world.installed), ["view omagari@next version"]);
+    await sleep(500);
+    assert.deepEqual(await npmCalls(world.installed), ["view omagari@next version"]);
+  });
+  assert.deepEqual(versions(world), ["0.0.0-dev.1"]);
+  assert.ok(!world.frames.some((f) => f.kind === "error"));
 });

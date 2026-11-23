@@ -6755,6 +6755,71 @@ button.person {
   font-size: 12px;
 }
 
+/* The new-version card (#505), in the progress button's frame, right above the profile panel. */
+.update-card {
+  display: grid;
+  gap: 6px;
+  margin: 8px 6px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.update-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.update-card-line {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.update-card-row .update-card-line {
+  white-space: nowrap;
+}
+
+.update-card .button {
+  flex: none;
+}
+
+/* The panel is narrow: the command takes the row, and Copy goes under it. */
+.update-card .connect-command {
+  flex-wrap: wrap;
+}
+
+.update-card .connect-command pre {
+  flex-basis: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* Moves while it waits; still for reduced motion. */
+.update-card-bar i {
+  width: 40%;
+  animation: update-card-wait 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes update-card-wait {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(150%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-card-bar i {
+    animation: none;
+  }
+}
+
 .dialog.guide-dialog {
   width: min(560px, 100vw - 32px);
 }

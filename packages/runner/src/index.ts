@@ -862,6 +862,13 @@ export async function startRunner(options: {
   quietMs?: number;
   /** A person started it by hand, which shares the repo (ADR-0049). Default true; the background runner passes false. */
   shareRepo?: boolean;
+  /** The npm version told to the server in hello (ADR-0061). Default: this install's, none for a clone. */
+  version?: string;
+  /**
+   * What to do when the owner asks this runner to update (`update`, ADR-0061). Resolves to why it couldn't, or nothing if it's already current;
+   * if it updated, the process restarts instead. Without it, the runner answers that it can't update itself.
+   */
+  update?: () => Promise<string | undefined>;
 }) {
   const found = await readRepo(options.folder);
   const { folder } = found;
@@ -999,6 +1006,7 @@ export async function startRunner(options: {
       current.send(
         encode(runnerToServer, "hello", {
           session: options.session,
+          version: options.version ?? installedPackage()?.version,
           repos,
           shareRepo: options.shareRepo ?? true,
           executors: executorIds,
@@ -1122,6 +1130,19 @@ export async function startRunner(options: {
         void done.finally(() => debating.delete(done));
       } else if (message.kind === "stopDraft") {
         stopDrafts.get(message.payload.id)?.abort();
+      } else if (message.kind === "update") {
+        // The server only says "update"; what to install is read from npm by `options.update` (ADR-0061).
+        const failed = (why: string) =>
+          current.send(
+            encode(runnerToServer, "error", { code: "internal", message: why }, message.id),
+          );
+        if (!options.update)
+          failed("This runner can't update itself. Update it by hand and turn it back on");
+        else
+          options.update().then(
+            (why) => why && failed(why),
+            (error) => failed(error instanceof Error ? error.message : String(error)),
+          );
       } else {
         // The reason for a refusal. Before welcome, throw it; after, report it as `ended` when the connection closes with 1008.
         refusal = new ContractFailure(message.payload);

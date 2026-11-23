@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 72;
+export const CONTRACT_VERSION = 73;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -1288,9 +1288,11 @@ export const runnerToServer = {
    * `mergeCheck` is this runner's merge run. Turning it on and off is only done on the runner (ADR-0034), so it is announced once when connecting.
    * `repos` only has remotes under the accounts the server accepts (`api.accounts`). The runner never sends the others, not even by name (ADR-0049).
    * `shareRepo` says a person started this runner by hand (`omagari runner`), which shares the repo (repo sharing, ADR-0049). The background runner sends false.
+   * `version` is the npm package version (ADR-0048). A runner run from a clone has none and sends none (ADR-0061).
    */
   hello: z.strictObject({
     session: z.string(),
+    version: z.string().max(100).optional(),
     repos: z.array(z.string()),
     shareRepo: z.boolean(),
     executors: z.array(ExecutorId),
@@ -1467,6 +1469,12 @@ export const serverToRunner = {
   }),
   /** Stops `draft` (the `id` of what was sent). If it's queued, it won't run; if it's running, the executor is shut down. No answer. */
   stopDraft: z.strictObject({ id: z.string() }),
+  /**
+   * Update yourself (ADR-0061). Sent only when the runner's owner asks (`api.updateRunner`). It has no fields: the server can't name a version, package or URL.
+   * The runner asks npm for its own dist-tag's newest version. If it already runs that, it does nothing; otherwise it updates the way a newer contract does and restarts.
+   * If it can't, it answers `error` (`re`).
+   */
+  update: z.strictObject({}),
   /**
    * Current situation: all works in the workspace (including the receiving runner's member's, same as `api.works`) and all claims. Claims stay even if the work isn't observed (for example after checking out another branch).
    * Sent right after welcome, and again every time it changes. The runner keeps it and hands it to hooks (ADR-0005).
@@ -2038,6 +2046,16 @@ export const api = {
     method: "POST",
     path: "/api/workspaces/delete",
     body: z.strictObject({ workspace: z.string() }),
+    response: z.strictObject({}),
+  },
+  /**
+   * Asks the caller's connected runners, in every workspace, to update themselves (`serverToRunner.update`, ADR-0061). Only the owner can ask for their own runners;
+   * there's no body, so nobody can pick what gets installed. Runners from a clone (no `version`) aren't asked. If none is connected, `runner_offline`.
+   * How it goes arrives as `serverToWeb.runners`.
+   */
+  updateRunner: {
+    method: "POST",
+    path: "/api/runner/update",
     response: z.strictObject({}),
   },
   /**
@@ -2654,6 +2672,20 @@ export const serverToWeb = {
    * a request arrives or one is decided. `added` is the request that just arrived (not set after welcome or a decision), which the web turns into a notification.
    */
   access: z.strictObject({ requests: z.array(PendingAccess), added: PendingAccess.optional() }),
+  /**
+   * My runners (ADR-0061). Goes only to my own connections: once after welcome (if I have an npm runner connected or an update going), and every time one of my runners connects or drops, or an update I asked for moves on.
+   * `versions` are the npm versions of my connected runners, no repeats (runners from a clone have none). `update` is how my last `api.updateRunner` is going:
+   * `updating` until a runner of mine says hello again, `failed` (with the runner's reason) if one couldn't, until then too; null otherwise.
+   */
+  runners: z.strictObject({
+    versions: z.array(z.string()),
+    update: z
+      .discriminatedUnion("state", [
+        z.strictObject({ state: z.literal("updating") }),
+        z.strictObject({ state: z.literal("failed"), message: z.string() }),
+      ])
+      .nullable(),
+  }),
   error: ContractError,
 } satisfies Payloads;
 

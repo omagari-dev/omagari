@@ -78,4 +78,16 @@ export const connectEn = {
   demo: "This is a demo. What you do stays in this tab and is gone when you reload.",
   demoNeedsServer: "That needs a real server and agent, so the demo can't do it.",
   openApp: "Open app",
+  /** The new-version card above the profile panel (#505, ADR-0061). */
+  update: {
+    title: "New version out",
+    /** "dev.57 → dev.60" */
+    versions: (from: string, to: string) => `${from} → ${to}`,
+    now: "Update now",
+    updating: "Updating…",
+    restarts: "Your runner restarts by itself.",
+    failed: "Couldn't update",
+    offline: "Your runner is off.",
+    command: "Run this in a terminal instead.",
+  },
 };
