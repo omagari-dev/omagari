@@ -210,6 +210,10 @@ Two works each build the same thing separately.
 Temporarily merges two works and runs the check command on the result. It shows whether a guessed indirect conflict really breaks.
 _Avoid_: merge preview, virtual merge
 
+**Unsandboxed merge run** (샌드박스 없는 합쳐 돌려 보기):
+A merge run on native Windows, which runs the check command as the person's own account because no sandbox there holds it in. It is off unless the person turns it on in a terminal and accepts the risk (ADR-0059).
+_Avoid_: unsafe mode, trusted mode
+
 **Check command** (검사 명령):
 The team's command that a merge run executes on the merged result. It can be a test, a build, or a lint.
 _Avoid_: test command

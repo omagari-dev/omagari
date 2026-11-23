@@ -4,6 +4,8 @@ status: accepted
 
 # Tests fake launchctl and systemctl
 
+> Updated by ADR-0060 (2026-11-23): the harness fakes `schtasks` the same way.
+
 `omagari setup` now registers the background runner with launchd (macOS) or a systemd user unit (Linux, WSL2) (ADR-0049), and `omagari uninstall` removes it. Behavior tests run setup, so without a fake every test run would register a real service on the developer's machine or on CI. Decided on 2026-11-20 by @Pancheble in #352.
 
 - The harness puts fake `launchctl` and `systemctl` first on the CLI's PATH, the same way it fakes `claude` and `codex`. They record their arguments and succeed.

@@ -4,6 +4,8 @@ status: accepted
 
 # One background runner per machine; it watches the repos agents open, once each person shares them
 
+> Updated by ADR-0060 (2026-11-23): on native Windows, `setup` registers the background runner with Task Scheduler instead of stopping.
+
 Today a person keeps `omagari runner` open in a terminal for each repo folder (ADR-0016). Decided on 2026-11-19 by @Pancheble in the #347 grilling: `omagari setup` registers the runner as a background service that starts at login, and nobody lists folders.
 
 - **One background process per machine.** `setup` registers it with launchd (macOS) or a systemd user unit (Linux, WSL2). It runs one runner per repo inside the same process, with the same GitHub session (one per server, as today). With no repo yet it just waits.
