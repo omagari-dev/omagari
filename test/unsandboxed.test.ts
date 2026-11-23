@@ -11,7 +11,7 @@ import {
   type MergeWith,
   unsandboxed,
 } from "../packages/runner/src/check.ts";
-import { eventually, startWorld, tempRepo, winSkip, writer } from "./harness.ts";
+import { eventually, startWorld, tempRepo, writer } from "./harness.ts";
 
 const windowsOnly =
   process.platform === "win32" ? {} : { skip: "Without a sandbox is only for native Windows" };
@@ -132,7 +132,6 @@ setInterval(() => {}, 1000);
 );
 
 test("without a sandbox can't be turned on by an agent: with no terminal it's refused and nothing is kept, and off Windows it's refused", {
-  ...winSkip(463),
   timeout: 60_000,
 }, async (t) => {
   const world = await startWorld();
@@ -155,7 +154,7 @@ test("without a sandbox can't be turned on by an agent: with no terminal it's re
 
 test(
   "on native Windows without a sandbox, the web reads the runner's merge run as on without a sandbox, and omagari runner check gives verdicts from a real check command",
-  process.platform === "win32" ? { ...winSkip(463), timeout: 120_000 } : windowsOnly,
+  process.platform === "win32" ? { timeout: 120_000 } : windowsOnly,
   async (t) => {
     const world = await startWorld({ mergeCheck: "unsandboxed", observeMs: 50 });
     t.after(world.stop);

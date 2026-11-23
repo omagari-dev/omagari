@@ -10,8 +10,8 @@ import {
   readRepo,
   removeStaleSocket,
   runnerPaths,
-  serveLocal,
   STOP,
+  serveLocal,
 } from "@omagari/runner";
 
 /** How often it tries again the folders whose runner isn't on (server down at login, a terminal runner that ended). */
