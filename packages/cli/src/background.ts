@@ -1,11 +1,17 @@
 // The background runner (ADR-0049): one process per user that runs one runner per repo folder, in-process.
 // The session-start hook sends it folders over one socket. It keeps the folders in the config folder and starts them again after a restart.
 import { once } from "node:events";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { text } from "node:stream/consumers";
-import { backgroundSocket, OutsideAccounts, readRepo, runnerPaths } from "@omagari/runner";
+import {
+  backgroundSocket,
+  OutsideAccounts,
+  readRepo,
+  removeStaleSocket,
+  runnerPaths,
+} from "@omagari/runner";
 
 /** How often it tries again the folders whose runner isn't on (server down at login, a terminal runner that ended). */
 const RETRY_MS = 60_000;
@@ -106,7 +112,7 @@ export async function background(foldersFile: string, start: (folder: string) =>
         () => connection.destroy(),
       );
   });
-  await rm(socket, { force: true }); // left behind by a background runner that was killed
+  await removeStaleSocket(socket); // left behind by a background runner that was killed
   local.listen(socket);
   await once(local, "listening");
   console.log(`Background runner on: ${socket}`);

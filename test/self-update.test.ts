@@ -19,7 +19,7 @@ import { type TestContext, test } from "node:test";
 import { promisify } from "node:util";
 import { CONTRACT_VERSION } from "@omagari/contract";
 import { type WebSocket, WebSocketServer } from "ws";
-import { eventually, REPO, tempRepo, winSkip } from "./harness.ts";
+import { eventually, REPO, tempRepo } from "./harness.ts";
 
 const runner = ["runner", "--share", "full", "--merge-check", "off"];
 const root = join(import.meta.dirname, "..");
@@ -216,174 +216,142 @@ writeFileSync(pkg, readFileSync(pkg, "utf8").replace("0.0.0-dev.1", "0.0.0-dev.2
   return { git, origin, installed, observed, hellos, omagari, bump, keep };
 }
 
-test(
-  "when the server's contract is newer, the installed clone is fast-forwarded, dependencies are installed and it restarts, what was pulled is recorded and the observed folder is untouched",
-  winSkip(463),
-  async (t) => {
-    const world = await setup(t, refuse(CONTRACT_VERSION + 1));
-    const before = await world.git(world.installed, "rev-parse", "HEAD");
-    const observedStatus = await world.git(world.observed.folder, "status", "--porcelain");
-    const observedHead = await world.git(world.observed.folder, "rev-parse", "HEAD");
+test("when the server's contract is newer, the installed clone is fast-forwarded, dependencies are installed and it restarts, what was pulled is recorded and the observed folder is untouched", async (t) => {
+  const world = await setup(t, refuse(CONTRACT_VERSION + 1));
+  const before = await world.git(world.installed, "rev-parse", "HEAD");
+  const observedStatus = await world.git(world.observed.folder, "status", "--porcelain");
+  const observedHead = await world.git(world.observed.folder, "rev-parse", "HEAD");
 
-    const started = await world.omagari(...runner);
-    const after = await world.git(world.origin, "rev-parse", "HEAD");
-    assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), after);
-    assert.equal((await readFile(join(world.installed, "npm-called"), "utf8")).trim(), "ci");
-    // First it connected with the old contract; the runner restarted after pulling connected with the new one. If it still doesn't match, it stops without pulling again and again.
-    assert.deepEqual(world.hellos, [CONTRACT_VERSION, CONTRACT_VERSION + 1]);
-    assert.notEqual(started.code, 0);
-    assert.match(started.stdout, /The server's contract is newer, so this clone will be updated/);
-    assert.match(started.stdout, /Updated dev from .* to .*/);
-    // The notice talks about the installed clone's branch.
-    assert.match(started.stdout, /Pull `dev`/);
-    assert.doesNotMatch(started.stdout, /`main`/);
+  const started = await world.omagari(...runner);
+  const after = await world.git(world.origin, "rev-parse", "HEAD");
+  assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), after);
+  assert.equal((await readFile(join(world.installed, "npm-called"), "utf8")).trim(), "ci");
+  // First it connected with the old contract; the runner restarted after pulling connected with the new one. If it still doesn't match, it stops without pulling again and again.
+  assert.deepEqual(world.hellos, [CONTRACT_VERSION, CONTRACT_VERSION + 1]);
+  assert.notEqual(started.code, 0);
+  assert.match(started.stdout, /The server's contract is newer, so this clone will be updated/);
+  assert.match(started.stdout, /Updated dev from .* to .*/);
+  // The notice talks about the installed clone's branch.
+  assert.match(started.stdout, /Pull `dev`/);
+  assert.doesNotMatch(started.stdout, /`main`/);
 
-    const log = await world.omagari("runner", "log");
-    assert.match(
-      log.stdout,
-      new RegExp(`Runner updated its clone dev ${before.slice(0, 7)} → ${after.slice(0, 7)}`),
-    );
-    assert.equal(await world.git(world.observed.folder, "status", "--porcelain"), observedStatus);
-    assert.equal(await world.git(world.observed.folder, "rev-parse", "HEAD"), observedHead);
-  },
-);
+  const log = await world.omagari("runner", "log");
+  assert.match(
+    log.stdout,
+    new RegExp(`Runner updated its clone dev ${before.slice(0, 7)} → ${after.slice(0, 7)}`),
+  );
+  assert.equal(await world.git(world.observed.folder, "status", "--porcelain"), observedStatus);
+  assert.equal(await world.git(world.observed.folder, "rev-parse", "HEAD"), observedHead);
+});
 
-test(
-  "when the installed clone has edited files, nothing changes and what to do is shown",
-  winSkip(463),
-  async (t) => {
-    const world = await setup(t, refuse(CONTRACT_VERSION + 1));
-    const before = await world.git(world.installed, "rev-parse", "HEAD");
-    await writeFile(join(world.installed, "packages/cli/package.json"), "{}\n");
+test("when the installed clone has edited files, nothing changes and what to do is shown", async (t) => {
+  const world = await setup(t, refuse(CONTRACT_VERSION + 1));
+  const before = await world.git(world.installed, "rev-parse", "HEAD");
+  await writeFile(join(world.installed, "packages/cli/package.json"), "{}\n");
 
-    const started = await world.omagari(...runner);
-    assert.notEqual(started.code, 0);
-    assert.match(started.stderr, /Could not update automatically.*has modified files/s);
-    assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
-    assert.deepEqual(world.hellos, [CONTRACT_VERSION]);
-    await assert.rejects(readFile(join(world.installed, "npm-called")));
-  },
-);
+  const started = await world.omagari(...runner);
+  assert.notEqual(started.code, 0);
+  assert.match(started.stderr, /Could not update automatically.*has modified files/s);
+  assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
+  assert.deepEqual(world.hellos, [CONTRACT_VERSION]);
+  await assert.rejects(readFile(join(world.installed, "npm-called")));
+});
 
-test(
-  "when the installed clone can't be fast-forwarded, nothing changes and what to do is shown",
-  winSkip(463),
-  async (t) => {
-    const world = await setup(t, refuse(CONTRACT_VERSION + 1));
-    await world.git(world.installed, "commit", "--allow-empty", "-m", "my commit");
-    const before = await world.git(world.installed, "rev-parse", "HEAD");
+test("when the installed clone can't be fast-forwarded, nothing changes and what to do is shown", async (t) => {
+  const world = await setup(t, refuse(CONTRACT_VERSION + 1));
+  await world.git(world.installed, "commit", "--allow-empty", "-m", "my commit");
+  const before = await world.git(world.installed, "rev-parse", "HEAD");
 
-    const started = await world.omagari(...runner);
-    assert.notEqual(started.code, 0);
-    assert.match(started.stderr, /`git pull --ff-only` failed/);
-    assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
-    await assert.rejects(readFile(join(world.installed, "npm-called")));
-  },
-);
+  const started = await world.omagari(...runner);
+  assert.notEqual(started.code, 0);
+  assert.match(started.stderr, /`git pull --ff-only` failed/);
+  assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
+  await assert.rejects(readFile(join(world.installed, "npm-called")));
+});
 
-test(
-  "when the server is older, it doesn't pull and tells you to raise the server",
-  winSkip(463),
-  async (t) => {
-    const world = await setup(t, refuse(CONTRACT_VERSION - 1));
-    const before = await world.git(world.installed, "rev-parse", "HEAD");
+test("when the server is older, it doesn't pull and tells you to raise the server", async (t) => {
+  const world = await setup(t, refuse(CONTRACT_VERSION - 1));
+  const before = await world.git(world.installed, "rev-parse", "HEAD");
 
-    const started = await world.omagari(...runner);
-    assert.notEqual(started.code, 0);
-    assert.match(started.stderr, /The server is older/);
-    assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
-    assert.deepEqual(world.hellos, [CONTRACT_VERSION]);
-  },
-);
+  const started = await world.omagari(...runner);
+  assert.notEqual(started.code, 0);
+  assert.match(started.stderr, /The server is older/);
+  assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
+  assert.deepEqual(world.hellos, [CONTRACT_VERSION]);
+});
 
-test(
-  "when a running, attached runner is refused because the server came back up with a new contract, it pulls the installed clone, restarts and attaches",
-  winSkip(463),
-  async (t) => {
-    const N = CONTRACT_VERSION;
-    // It attached, then dropped (the server comes back up), and on reattaching it refuses with the new contract. The runner that pulled and restarted attaches.
-    const world = await setup(t, (socket, hello, n) => {
-      if (n === 1) {
-        welcome(socket, hello, n);
-        setTimeout(() => socket.close(), 200);
-      } else if (n === 2) refuse(N + 1)(socket, hello, n);
-      else welcome(socket, hello, n);
-    });
-    await world.keep(3);
-    assert.deepEqual(world.hellos, [N, N, N + 1]);
-    assert.equal(
-      await world.git(world.installed, "rev-parse", "HEAD"),
-      await world.git(world.origin, "rev-parse", "HEAD"),
-    );
-    assert.equal((await readFile(join(world.installed, "npm-called"), "utf8")).trim(), "ci");
-  },
-);
+test("when a running, attached runner is refused because the server came back up with a new contract, it pulls the installed clone, restarts and attaches", async (t) => {
+  const N = CONTRACT_VERSION;
+  // It attached, then dropped (the server comes back up), and on reattaching it refuses with the new contract. The runner that pulled and restarted attaches.
+  const world = await setup(t, (socket, hello, n) => {
+    if (n === 1) {
+      welcome(socket, hello, n);
+      setTimeout(() => socket.close(), 200);
+    } else if (n === 2) refuse(N + 1)(socket, hello, n);
+    else welcome(socket, hello, n);
+  });
+  await world.keep(3);
+  assert.deepEqual(world.hellos, [N, N, N + 1]);
+  assert.equal(
+    await world.git(world.installed, "rev-parse", "HEAD"),
+    await world.git(world.origin, "rev-parse", "HEAD"),
+  );
+  assert.equal((await readFile(join(world.installed, "npm-called"), "utf8")).trim(), "ci");
+});
 
-test(
-  "when, after a runner that pulled and restarted attaches well, the server gets a new contract again, it pulls again",
-  winSkip(463),
-  async (t) => {
-    const N = CONTRACT_VERSION;
-    let world: Awaited<ReturnType<typeof setup>>;
-    world = await setup(t, (socket, hello, n) => {
-      // 1: refused on start → pulled. 2: the pulled runner attaches. 3: the server rises again and refuses → pulled again. 4: attaches.
-      if (n === 1) refuse(N + 1)(socket, hello, n);
-      else if (n === 2) {
-        welcome(socket, hello, n);
-        void world.bump(N + 2).then(() => socket.close());
-      } else if (n === 3) refuse(N + 2)(socket, hello, n);
-      else welcome(socket, hello, n);
-    });
-    await world.keep(4);
-    assert.deepEqual(world.hellos, [N, N + 1, N + 1, N + 2]);
-    assert.equal(
-      await world.git(world.installed, "rev-parse", "HEAD"),
-      await world.git(world.origin, "rev-parse", "HEAD"),
-    );
-  },
-);
+test("when, after a runner that pulled and restarted attaches well, the server gets a new contract again, it pulls again", async (t) => {
+  const N = CONTRACT_VERSION;
+  let world: Awaited<ReturnType<typeof setup>>;
+  world = await setup(t, (socket, hello, n) => {
+    // 1: refused on start → pulled. 2: the pulled runner attaches. 3: the server rises again and refuses → pulled again. 4: attaches.
+    if (n === 1) refuse(N + 1)(socket, hello, n);
+    else if (n === 2) {
+      welcome(socket, hello, n);
+      void world.bump(N + 2).then(() => socket.close());
+    } else if (n === 3) refuse(N + 2)(socket, hello, n);
+    else welcome(socket, hello, n);
+  });
+  await world.keep(4);
+  assert.deepEqual(world.hellos, [N, N + 1, N + 1, N + 2]);
+  assert.equal(
+    await world.git(world.installed, "rev-parse", "HEAD"),
+    await world.git(world.origin, "rev-parse", "HEAD"),
+  );
+});
 
-test(
-  "an npm-installed runner rejected by a newer contract installs its dist-tag, restarts and logs the versions",
-  winSkip(463),
-  async (t) => {
-    const N = CONTRACT_VERSION;
-    const world = await setup(
-      t,
-      (socket, hello, n) => (n === 1 ? refuse(N + 1) : welcome)(socket, hello, n),
-      "ok",
-    );
-    // Not pulled: the remote's new commit is not in the installed folder.
-    const before = await world.git(world.installed, "rev-parse", "HEAD");
-    await world.keep(2);
-    assert.deepEqual(world.hellos, [N, N + 1]);
-    assert.equal(
-      (await readFile(join(world.installed, "npm-called"), "utf8")).trim(),
-      "i -g omagari@next",
-    );
-    assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
+test("an npm-installed runner rejected by a newer contract installs its dist-tag, restarts and logs the versions", async (t) => {
+  const N = CONTRACT_VERSION;
+  const world = await setup(
+    t,
+    (socket, hello, n) => (n === 1 ? refuse(N + 1) : welcome)(socket, hello, n),
+    "ok",
+  );
+  // Not pulled: the remote's new commit is not in the installed folder.
+  const before = await world.git(world.installed, "rev-parse", "HEAD");
+  await world.keep(2);
+  assert.deepEqual(world.hellos, [N, N + 1]);
+  assert.equal(
+    (await readFile(join(world.installed, "npm-called"), "utf8")).trim(),
+    "i -g omagari@next",
+  );
+  assert.equal(await world.git(world.installed, "rev-parse", "HEAD"), before);
 
-    const log = await world.omagari("runner", "log");
-    assert.match(log.stdout, /Runner updated omagari@next 0\.0\.0-dev\.1 → 0\.0\.0-dev\.2/);
-  },
-);
+  const log = await world.omagari("runner", "log");
+  assert.match(log.stdout, /Runner updated omagari@next 0\.0\.0-dev\.1 → 0\.0\.0-dev\.2/);
+});
 
-test(
-  "when the npm install fails, nothing changes and what to run is shown",
-  winSkip(463),
-  async (t) => {
-    const world = await setup(t, refuse(CONTRACT_VERSION + 1), "fail");
-    const started = await world.omagari(...runner);
-    assert.notEqual(started.code, 0);
-    assert.match(
-      started.stderr,
-      /Could not update automatically.*`npm i -g omagari@next` failed.*not with sudo.*EACCES/s,
-    );
-    assert.deepEqual(world.hellos, [CONTRACT_VERSION]);
-    assert.match(await readFile(join(world.installed, "package.json"), "utf8"), /0\.0\.0-dev\.1/);
-    assert.equal(
-      (await world.omagari("runner", "log")).stdout.trim(),
-      "The runner hasn't run anything yet",
-    );
-  },
-);
+test("when the npm install fails, nothing changes and what to run is shown", async (t) => {
+  const world = await setup(t, refuse(CONTRACT_VERSION + 1), "fail");
+  const started = await world.omagari(...runner);
+  assert.notEqual(started.code, 0);
+  assert.match(
+    started.stderr,
+    /Could not update automatically.*`npm i -g omagari@next` failed.*not with sudo.*EACCES/s,
+  );
+  assert.deepEqual(world.hellos, [CONTRACT_VERSION]);
+  assert.match(await readFile(join(world.installed, "package.json"), "utf8"), /0\.0\.0-dev\.1/);
+  assert.equal(
+    (await world.omagari("runner", "log")).stdout.trim(),
+    "The runner hasn't run anything yet",
+  );
+});

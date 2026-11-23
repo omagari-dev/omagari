@@ -497,6 +497,18 @@ export type CheckRecord = {
 };
 
 /** The runner's local place. There is one per repo (including linked worktrees), so the CLI finds the same runner from any worktree. */
+/** Where a local socket listens: a named pipe on Windows (Node listens only on those there, ADR-0060), a socket file in the temp folder elsewhere. */
+export function localSocket(name: string) {
+  return process.platform === "win32"
+    ? `\\\\.\\pipe\\${name}`
+    : join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), `${name}.sock`);
+}
+
+/** Removes the socket file a turned-off runner left behind. A pipe leaves no file, so on Windows there's nothing to remove. */
+export async function removeStaleSocket(path: string) {
+  if (process.platform !== "win32") await rm(path, { force: true });
+}
+
 export async function runnerPaths(folder: string) {
   const { stdout } = await execFileAsync(
     "git",
@@ -508,7 +520,7 @@ export async function runnerPaths(folder: string) {
   const id = createHash("sha256").update(common).digest("hex").slice(0, 16);
   return {
     /** The socket the CLI connects to */
-    socket: join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), `omagari-${id}.sock`),
+    socket: localSocket(`omagari-${id}`),
     /** The run log. It never goes out to the server. */
     log: join(common, "omagari", "runs.jsonl"),
     /** The share level the owner chose. It's used when the runner is turned on again without choosing one. */
@@ -550,7 +562,7 @@ export async function callRunner<K extends keyof typeof cliToRunner & string>(
 export function backgroundSocket() {
   const config = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "omagari");
   const id = createHash("sha256").update(config).digest("hex").slice(0, 16);
-  return join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), `omagari-background-${id}.sock`);
+  return localSocket(`omagari-background-${id}`);
 }
 
 /**
@@ -1858,7 +1870,7 @@ export async function startRunner(options: {
         () => connection.destroy(),
       );
   });
-  await rm(paths.socket, { force: true }); // The socket a runner that was turned off left behind
+  await removeStaleSocket(paths.socket); // The socket a runner that was turned off left behind
   local.listen(paths.socket);
   await once(local, "listening");
   const localClosed = once(local, "close");
