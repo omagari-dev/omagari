@@ -4,14 +4,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { devNull, tmpdir } from "node:os";
@@ -37,22 +30,10 @@ import {
   serverToWeb,
   webToServer,
 } from "@omagari/contract";
-import {
-  type Executor,
-  type Sandbox,
-  type SandboxInput,
-  startRunner,
-} from "@omagari/runner";
-import {
-  type Account,
-  type GitHub,
-  type Pull,
-  type RepoLabel,
-  startServer,
-} from "@omagari/server";
+import { type Executor, type Sandbox, type SandboxInput, startRunner } from "@omagari/runner";
+import { type Account, type GitHub, type Pull, type RepoLabel, startServer } from "@omagari/server";
 
-const executable = (path: string) =>
-  fileURLToPath(new URL(path, import.meta.url));
+const executable = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const CLI = executable("../packages/cli/src/main.ts");
 const HOOK = executable("../packages/hooks/src/main.ts");
 const FAKE_CODEX = executable("./fake-codex.ts");
@@ -73,7 +54,9 @@ const shim = (bin: string, name: string, script: string, ...extra: string[]) =>
       );
 
 // The Git that the runner and CLI call also doesn't read the machine's Git config (global gitignore and so on).
-process.env.GIT_CONFIG_GLOBAL = devNull;
+// Git for Windows accepts /dev/null but not the \\.\nul that os.devNull gives.
+const gitNull = process.platform === "win32" ? "/dev/null" : devNull;
+process.env.GIT_CONFIG_GLOBAL = gitNull;
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 // Even when tests run inside Claude Code, the CLI doesn't think it is inside Claude Code (same as CI).
 delete process.env.CLAUDECODE;
@@ -102,33 +85,27 @@ function run(
     env?: object;
   },
 ) {
-  return new Promise<{ code: number; stdout: string; stderr: string }>(
-    (resolve, reject) => {
-      const child = execFile(
-        file,
-        args,
-        { cwd: options.cwd, env: { ...process.env, ...options.env } },
-        (error, stdout, stderr) => {
-          if (child.exitCode === null)
-            reject(error); // it didn't start, or it was killed by a signal
-          else resolve({ code: child.exitCode, stdout, stderr });
-        },
-      );
-      // Writing to an executable (git, etc.) that exits without reading its input gives EPIPE. That is not a failure.
-      // With no listener it becomes an uncaught exception, which fails the test running at the time and skips that test's cleanup.
-      child.stdin?.on("error", () => {});
-      if (options.keepStdinOpen) child.stdin?.write(options.stdin ?? "");
-      else child.stdin?.end(options.stdin ?? "");
-    },
-  );
+  return new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = execFile(
+      file,
+      args,
+      { cwd: options.cwd, env: { ...process.env, ...options.env } },
+      (error, stdout, stderr) => {
+        if (child.exitCode === null)
+          reject(error); // it didn't start, or it was killed by a signal
+        else resolve({ code: child.exitCode, stdout, stderr });
+      },
+    );
+    // Writing to an executable (git, etc.) that exits without reading its input gives EPIPE. That is not a failure.
+    // With no listener it becomes an uncaught exception, which fails the test running at the time and skips that test's cleanup.
+    child.stdin?.on("error", () => {});
+    if (options.keepStdinOpen) child.stdin?.write(options.stdin ?? "");
+    else child.stdin?.end(options.stdin ?? "");
+  });
 }
 
 /** Starts an executable that doesn't end (like the runner). Waits for output, and ends it by sending a signal. */
-function launch(
-  file: string,
-  args: string[],
-  options: { cwd: string; env?: object },
-) {
+function launch(file: string, args: string[], options: { cwd: string; env?: object }) {
   const child = spawn(file, args, {
     cwd: options.cwd,
     env: { ...process.env, ...options.env },
@@ -150,9 +127,7 @@ function launch(
       eventually(() => {
         const match = pattern.exec(stdout);
         if (!match)
-          throw new Error(
-            `Hasn't appeared yet: ${pattern}\nstdout: ${stdout}\nstderr: ${stderr}`,
-          );
+          throw new Error(`Hasn't appeared yet: ${pattern}\nstdout: ${stdout}\nstderr: ${stderr}`);
         return match;
       }),
     /** Sends a signal and waits for it to end. */
@@ -177,10 +152,7 @@ export const said = (m: ChannelMessage) =>
         : `Alert: ${m.alert.works.map((w) => `${w.login}/${w.branch}`).join(" ")}`;
 
 /** Repeats until `check` stops throwing. Use it to check things you have to wait for (connections, rechecks). */
-export async function eventually<T>(
-  check: () => T | Promise<T>,
-  timeoutMs = 10_000,
-): Promise<T> {
+export async function eventually<T>(check: () => T | Promise<T>, timeoutMs = 10_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
@@ -193,17 +165,14 @@ export async function eventually<T>(
 }
 
 /** Returns a function that writes files into a folder. Creates the folder if it's missing. */
-export const writer =
-  (folder: string) => async (path: string, content: string | Uint8Array) => {
-    await mkdir(dirname(join(folder, path)), { recursive: true });
-    await writeFile(join(folder, path), content);
-  };
+export const writer = (folder: string) => async (path: string, content: string | Uint8Array) => {
+  await mkdir(dirname(join(folder, path)), { recursive: true });
+  await writeFile(join(folder, path), content);
+};
 
 /** Temp folder to hold worktrees linked from outside the repo. Removed when the test ends. Takes a name and returns the path inside it. */
 export async function place(t: { after: (fn: () => Promise<void>) => void }) {
-  const folder = await realpath(
-    await mkdtemp(join(tmpdir(), "omagari-worktrees-")),
-  );
+  const folder = await realpath(await mkdtemp(join(tmpdir(), "omagari-worktrees-")));
   t.after(() => rm(folder, { recursive: true, force: true }));
   return (name: string) => join(folder, name);
 }
@@ -216,7 +185,7 @@ export async function tempRepo(repo = REPO) {
   // The temp folder on macOS is a symlink. Use the real path so it matches the top-level folder Git reports.
   const folder = await realpath(await mkdtemp(join(tmpdir(), "omagari-")));
   const env = {
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: gitNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_AUTHOR_NAME: "Omagari Test",
     GIT_AUTHOR_EMAIL: "test@omagari.invalid",
@@ -225,19 +194,14 @@ export async function tempRepo(repo = REPO) {
   };
   const git = async (...args: string[]) => {
     const result = await run("git", args, { cwd: folder, env });
-    if (result.code !== 0)
-      throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
+    if (result.code !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
     return result.stdout.trim();
   };
   await git("init", "--initial-branch=main");
   await git("commit", "--allow-empty", "--message=init");
   await git("remote", "add", "origin", `https://github.com/${repo}.git`);
   await git("update-ref", "refs/remotes/origin/main", "HEAD");
-  await git(
-    "symbolic-ref",
-    "refs/remotes/origin/HEAD",
-    "refs/remotes/origin/main",
-  );
+  await git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
   return {
     folder,
     git,
@@ -270,15 +234,13 @@ export function fakeGitHub() {
   const exists = (repo: string) => known.has(moves.get(repo) ?? repo);
   /** Accounts the GitHub App isn't installed on. GitHub hides their repos from the App's tokens. */
   const uninstalled = new Set<string>();
-  const hidden = (repo: string) =>
-    uninstalled.has(repo.split("/")[0] as string);
+  const hidden = (repo: string) => uninstalled.has(repo.split("/")[0] as string);
   /** Public repos the App isn't installed on. Visible, but never reachable for Omagari. */
   const bare = new Set<string>();
   /** GitHub numeric ids of repos and people. Assigned when first seen, and they follow a move or rename (`move`, `rename`). */
   const ids = new Map<string, number>();
   let nextId = 1;
-  const idOf = (key: string) =>
-    ids.get(key) ?? (ids.set(key, nextId++), nextId - 1);
+  const idOf = (key: string) => ids.get(key) ?? (ids.set(key, nextId++), nextId - 1);
   /** Account type and avatar (changed with `account`). Without it, it's an organization with no avatar. */
   const accounts = new Map<string, Account>();
   const pulls: (Pull & {
@@ -305,8 +267,7 @@ export function fakeGitHub() {
   const labelOf = (name: string) =>
     labels.find((label) => label.name.toLowerCase() === name.toLowerCase());
   const ensureLabel = (name: string) => {
-    if (!labelOf(name))
-      labels.push({ id: labelId++, name, color: "ededed", description: "" });
+    if (!labelOf(name)) labels.push({ id: labelId++, name, color: "ededed", description: "" });
   };
   const issueOf = (number: number) => {
     const found = issues.find((issue) => issue.number === number);
@@ -321,10 +282,7 @@ export function fakeGitHub() {
   }[] = [];
   let blocked: string | undefined;
   /** Each reviewer's last review state per PR number. */
-  const reviews = new Map<
-    number,
-    Map<string, "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED">
-  >();
+  const reviews = new Map<number, Map<string, "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED">>();
   /** The owner if the token can write to this repo. Otherwise throws, like GitHub. */
   const owner = (token: string, repo: string) => {
     const login = tokens.get(token);
@@ -364,8 +322,7 @@ export function fakeGitHub() {
   const github: GitHub = {
     async startDevice() {
       const deviceCode = crypto.randomUUID();
-      const userCode =
-        `${deviceCode.slice(0, 4)}-${deviceCode.slice(4, 8)}`.toUpperCase();
+      const userCode = `${deviceCode.slice(0, 4)}-${deviceCode.slice(4, 8)}`.toUpperCase();
       devices.set(deviceCode, { userCode });
       return {
         deviceCode,
@@ -383,15 +340,10 @@ export function fakeGitHub() {
     },
     async refresh(refreshToken) {
       const login = refreshTokens.get(refreshToken);
-      if (!login)
-        return { error: "The refresh token passed is incorrect or expired." };
+      if (!login) return { error: "The refresh token passed is incorrect or expired." };
       refreshTokens.delete(refreshToken);
       refreshes++;
-      return issue(login) as {
-        token: string;
-        refreshToken: string;
-        expiresInMs: number;
-      };
+      return issue(login) as { token: string; refreshToken: string; expiresInMs: number };
     },
     async user(token) {
       const login = tokens.get(token);
@@ -434,8 +386,7 @@ export function fakeGitHub() {
         .map(([name]) => ({
           name,
           private: true,
-          pushers: [...pushers].filter((key) => key.startsWith(`${name} `))
-            .length,
+          pushers: [...pushers].filter((key) => key.startsWith(`${name} `)).length,
         }));
     },
     async pulls(token, repo, branch) {
@@ -460,22 +411,16 @@ export function fakeGitHub() {
     async list(token, repo, ref, folder) {
       owner(token, repo);
       return [...tree(ref).keys()].flatMap((path) => {
-        const name = path.startsWith(`${folder}/`)
-          ? path.slice(folder.length + 1)
-          : "";
+        const name = path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : "";
         return name && !name.includes("/") ? [name] : [];
       });
     },
     async commit(token, repo, { branch, base, message, files: changed }) {
       const author = owner(token, repo);
-      if (files.has(branch))
-        throw new Error("HTTP 422 Reference already exists");
+      if (files.has(branch)) throw new Error("HTTP 422 Reference already exists");
       files.set(
         branch,
-        new Map([
-          ...tree(base),
-          ...changed.map((f) => [f.path, f.content] as const),
-        ]),
+        new Map([...tree(base), ...changed.map((f) => [f.path, f.content] as const)]),
       );
       commits.push({
         branch,
@@ -536,8 +481,7 @@ export function fakeGitHub() {
         .map(([login]) => login);
     },
     async merge(token, repo, number) {
-      if (!exists(repo) || !tokens.has(token))
-        return { reason: "HTTP 401 Bad credentials" };
+      if (!exists(repo) || !tokens.has(token)) return { reason: "HTTP 401 Bad credentials" };
       if (blocked) return { reason: blocked };
       const found = pulls.find((pull) => pull.number === number && pull.open);
       if (!found) return { reason: "HTTP 405 Pull Request is not mergeable" };
@@ -573,9 +517,7 @@ export function fakeGitHub() {
     },
     async comments(token, repo, number) {
       if (!exists(repo) || !tokens.has(token)) return undefined;
-      return issues
-        .find((issue) => issue.number === number)
-        ?.comments.map((c) => ({ ...c }));
+      return issues.find((issue) => issue.number === number)?.comments.map((c) => ({ ...c }));
     },
     async comment(token, repo, number, body) {
       const login = owner(token, repo);
@@ -615,9 +557,7 @@ export function fakeGitHub() {
       if (!found) throw new Error("HTTP 404 Not Found");
       // Like GitHub, the name of the label on an issue changes too.
       for (const issue of issues)
-        issue.labels = issue.labels.map((l) =>
-          l === found.name ? label.name : l,
-        );
+        issue.labels = issue.labels.map((l) => (l === found.name ? label.name : l));
       Object.assign(found, label);
       return { ...found };
     },
@@ -672,16 +612,14 @@ export function fakeGitHub() {
       moves.delete(repo);
       ids.delete(`repo ${repo}`);
       for (const set of [pushers, admins])
-        for (const key of [...set])
-          if (key.startsWith(`${repo} `)) set.delete(key);
+        for (const key of [...set]) if (key.startsWith(`${repo} `)) set.delete(key);
     },
     /** A person renamed their GitHub name from `from` to `to`. The id, token, and access follow, and someone else can take the old name. */
     rename(from: string, to: string) {
       ids.set(`user ${to}`, idOf(`user ${from}`));
       ids.delete(`user ${from}`);
       for (const map of [tokens, refreshTokens])
-        for (const [token, login] of map)
-          if (login === from) map.set(token, to);
+        for (const [token, login] of map) if (login === from) map.set(token, to);
       for (const set of [pushers, admins])
         for (const key of [...set])
           if (key.endsWith(` ${from}`)) {
@@ -722,11 +660,7 @@ export function fakeGitHub() {
     /** All PRs, including those the server opened. */
     pulls,
     /** `login` adds a review to PR `number`: request changes, approve, or dismiss a change request. */
-    review(
-      number: number,
-      login: string,
-      state: "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED",
-    ) {
+    review(number: number, login: string, state: "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED") {
       const found = reviews.get(number) ?? new Map();
       found.set(login, state);
       reviews.set(number, found);
@@ -799,16 +733,14 @@ export const stubbed = () => ({
 });
 
 /** An executor that always fails. Plugged into a runner that wasn't given a fake, in place of the real executor. Keeps results from changing with the Claude Code or Codex installed on this machine. */
-const noExecutor: Executor = () =>
-  Promise.reject(new Error("No fake executor was passed"));
+const noExecutor: Executor = () => Promise.reject(new Error("No fake executor was passed"));
 
 /**
  * Fake agent executor. Records the received input and options in `calls` and gives the answer `answer` decides.
  * If there is no session to continue, it starts a new one as `session-<call number>`.
  */
 export function fakeExecutor(
-  answer: (input: ExecutorInput) => string | Promise<string> = () =>
-    "fake answer",
+  answer: (input: ExecutorInput) => string | Promise<string> = () => "fake answer",
 ) {
   const calls: ExecutorInput[] = [];
   const executor: Executor = async (input) => {
@@ -860,9 +792,7 @@ async function fakeCli(
   process.env.PATH = `${bin}${delimiter}${process.env.PATH}`;
   process.env[callsEnv] = calls;
   return {
-    calls: async (): Promise<
-      { args: string[]; input: string; cwd: string }[]
-    > =>
+    calls: async (): Promise<{ args: string[]; input: string; cwd: string }[]> =>
       (await readFile(calls, "utf8").catch(() => ""))
         .split("\n")
         .filter(Boolean)
@@ -954,8 +884,7 @@ export async function startWorld(
 ) {
   const repo = await tempRepo();
   const data = await mkdtemp(join(tmpdir(), "omagari-server-")); // the server's DB and the CLI's config
-  const cleanup = () =>
-    Promise.all([repo.remove(), rm(data, { recursive: true, force: true })]);
+  const cleanup = () => Promise.all([repo.remove(), rm(data, { recursive: true, force: true })]);
   const fake = fakeGitHub();
   options.setup?.(fake);
   const database = join(data, "omagari.db");
@@ -1007,8 +936,7 @@ export async function startWorld(
       const polled = await call(server, api.loginPoll, {
         device: started.device,
       });
-      if ("session" in polled)
-        return { url: server.url, session: polled.session, login: name };
+      if ("session" in polled) return { url: server.url, session: polled.session, login: name };
     }
   };
 
@@ -1104,8 +1032,7 @@ export async function startWorld(
       Object.fromEntries(
         (await call(as, api.members)).members.map((member) => [
           member.login,
-          member.agents.find((agent) => agent.state !== "offline")?.state ??
-            "offline",
+          member.agents.find((agent) => agent.state !== "offline")?.state ?? "offline",
         ]),
       ),
     /** `as` creates a chat channel and returns its id. */
@@ -1132,23 +1059,15 @@ export async function startWorld(
         })
       ).qa,
     /** Waits until the Q&A `qa` in `as`'s DM gets an answer or fails, and returns that Q&A. */
-    settled: (
-      as: { url: string; session: string },
-      qa: Qa,
-      timeoutMs?: number,
-    ) =>
+    settled: (as: { url: string; session: string }, qa: Qa, timeoutMs?: number) =>
       eventually(async () => {
         const { qas } = await call(as, api.dms, { channel: qa.channel });
         const found = qas.find((other) => other.id === qa.id);
-        assert.ok(
-          found && found.answer.state !== "pending",
-          "Still waiting for an answer",
-        );
+        assert.ok(found && found.answer.state !== "pending", "Still waiting for an answer");
         return found;
       }, timeoutMs),
     /** Observations per work, as seen by member `as`. */
-    works: async (as: { url: string; session: string }) =>
-      (await call(as, api.works)).works,
+    works: async (as: { url: string; session: string }) => (await call(as, api.works)).works,
     /**
      * Opens a live connection with `as`'s session as the web does and sends hello. Returns the first thing the server sent (welcome or a refusal).
      * With `after`, it continues receiving messages after that number. `on` is the workspace or repo to receive (the first workspace if not given).
@@ -1165,9 +1084,7 @@ export async function startWorld(
       const received: Message<typeof serverToWeb>[] = [];
       const closed = Promise.withResolvers<number>();
       socket.addEventListener("open", () =>
-        socket.send(
-          encode(webToServer, "hello", { session: as.session, after, ...on }),
-        ),
+        socket.send(encode(webToServer, "hello", { session: as.session, after, ...on })),
       );
       socket.addEventListener("message", ({ data }) => {
         const decoded = decode(serverToWeb, data);
@@ -1178,14 +1095,11 @@ export async function startWorld(
         received.push(decoded.message);
       });
       socket.addEventListener("close", ({ code }) => closed.resolve(code));
-      await eventually(() =>
-        assert(received.length > 0 || socket.readyState === WebSocket.CLOSED),
-      );
+      await eventually(() => assert(received.length > 0 || socket.readyState === WebSocket.CLOSED));
       return {
         received,
         /** Only channel messages received, in the order received. */
-        messages: () =>
-          received.flatMap((m) => (m.kind === "message" ? [m.payload] : [])),
+        messages: () => received.flatMap((m) => (m.kind === "message" ? [m.payload] : [])),
         /** The last member list received. Throws if none yet. Wait for it with `eventually`. */
         members() {
           const last = received.findLast((m) => m.kind === "members");
@@ -1207,19 +1121,11 @@ export async function startWorld(
     },
     /** Shuts down the server and restarts it on the same port with the same DB. Same as the server restarting on a deploy. */
     async restartServer(
-      override: {
-        contentMs?: number;
-        historyMs?: number;
-        tokenKey?: string;
-      } = {},
+      override: { contentMs?: number; historyMs?: number; tokenKey?: string } = {},
     ) {
       const { port } = new URL(server.url);
       if (!serverDown) await server.stop();
-      server = await startServer({
-        ...serverOptions,
-        ...override,
-        port: Number(port),
-      });
+      server = await startServer({ ...serverOptions, ...override, port: Number(port) });
       serverDown = false;
     },
     /**
