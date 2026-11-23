@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./shim": "./src/shim.ts",
     "./version": "./src/version.ts"
   },
   "dependencies": {

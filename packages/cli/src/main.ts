@@ -44,6 +44,7 @@ import {
   runnerPaths,
   ServerContractMismatch,
   startRunner,
+  stopBackground,
 } from "@omagari/runner";
 import { background } from "./background.ts";
 import { install, uninstall } from "./install.ts";
@@ -75,6 +76,7 @@ const USAGE = `Usage:
   omagari runner log            Show what the runner has run
   omagari runner background     Run the background runner: one runner for each workspace repo an agent session opens.
                                 It observes a repo only once you share it. omagari setup registers it to start at login, so you don't run it yourself
+  omagari runner stop           Stop the background runner after it closes its runners. This is how it stops on Windows, which has no SIGTERM between processes
   omagari share on|off          Share this repo with the team (once per repo, it follows you to other machines), or stop sharing it.
                                 Until you share it, your runner doesn't observe it. Starting omagari runner by hand here shares it too
   omagari status                Show the current situation: members, Work, status lines, changed files, recent news (Feed)
@@ -137,6 +139,11 @@ try {
     await runner(values.share, values["merge-check"]);
   } else if (command === "runner" && sub === "background" && rest.length === 0) {
     await background(join(configDir, "folders.json"), startIn);
+  } else if (command === "runner" && sub === "stop" && rest.length === 0) {
+    await stopBackground().catch(() => {
+      throw new Error("The background runner is off");
+    });
+    console.log("Stopping the background runner");
   } else if (command === "runner" && sub === "ask" && rest.length > 0) {
     console.log(await ask(rest.join(" ")));
   } else if (command === "runner" && sub === "check" && rest.length === 0) {
