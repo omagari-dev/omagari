@@ -263,7 +263,7 @@ test("omagari install also installs two hooks and a one-line status skill for Co
   }
   const [start] = matching("SessionStart", "startup");
   const [edit] = matching("PreToolUse", "apply_patch");
-  assert.match(start ?? "", /\/packages\/hooks\/src\/main\.ts' codex$/);
+  assert.match(start ?? "", /[\\/]packages[\\/]hooks[\\/]src[\\/]main\.ts' codex$/);
   assert.equal(edit, start);
 
   // In the same situation it injects the same text as Claude Code's hook.

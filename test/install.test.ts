@@ -75,9 +75,16 @@ const readSettings = async (world: World): Promise<Settings> =>
  * A missing matcher or "*" matches everything; names joined with `|` match those names. This test's settings have no other shape.
  */
 function matching(settings: Settings, event: string, value: string) {
-  return (settings.hooks[event] ?? [])
-    .filter(({ matcher }) => !matcher || matcher === "*" || matcher.split("|").includes(value))
-    .flatMap(({ hooks }) => hooks.map((handler) => handler.command));
+  return (
+    (settings.hooks[event] ?? [])
+      .filter(({ matcher }) => !matcher || matcher === "*" || matcher.split("|").includes(value))
+      // On Windows a hook is `command` plus `args` (no shell); put it back in one line for the test's shell.
+      .flatMap(({ hooks }) =>
+        hooks.map(({ command, args }) =>
+          args ? [command, ...args].map((word) => `'${word}'`).join(" ") : command,
+        ),
+      )
+  );
 }
 
 const sessionStartInput = (cwd: string) => ({

@@ -1,10 +1,10 @@
 // Registers the background runner to start at login (ADR-0049): a launchd agent on macOS, a systemd user unit on Linux and WSL2, a Task Scheduler task on native Windows (ADR-0060).
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, release } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { execShim } from "@omagari/contract/shim";
 import { stopBackground } from "@omagari/runner";
 
 const MAIN = fileURLToPath(new URL(`./main${extname(import.meta.filename)}`, import.meta.url));
@@ -17,7 +17,7 @@ const CARRIED = ["PATH", "TMPDIR", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CODE
 
 type Service = { args: string[]; env: Record<string, string>; log: string };
 
-const run = (file: string, ...args: string[]) => promisify(execFile)(file, args);
+const run = (file: string, ...args: string[]) => execShim(file, args); // finds the fake schtasks .cmd in tests
 const configHome = () => process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 const plistFile = () => join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
 const unitFile = () => join(configHome(), "systemd", "user", UNIT);
