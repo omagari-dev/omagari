@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, normalize } from "node:path";
+import { isAbsolute, join, normalize, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import {
@@ -242,7 +242,13 @@ export async function codexRecentSession(folder: string, branch: string, skip: S
         return {};
       }
     })();
-    if (meta.id && meta.cwd === folder && meta.git?.branch === branch && !skip.has(meta.id))
+    if (
+      meta.id &&
+      meta.cwd &&
+      resolve(meta.cwd) === resolve(folder) &&
+      meta.git?.branch === branch &&
+      !skip.has(meta.id)
+    )
       return meta.id;
   }
   return undefined;

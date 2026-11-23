@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Alert, api, call } from "@omagari/contract";
-import { eventually, startWorld, winSkip, writer } from "./harness.ts";
+import { eventually, startWorld, writer } from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
 type As = { url: string; session: string };
@@ -84,165 +84,153 @@ const USES = [
   { path: "src/checkout.ts", line: 2, role: "uses" },
 ] as const;
 
-test(
-  "attaching a plan to a claim notifies work that uses the code before it changes; a new plan replaces the old one; releasing without doing it sends cancelled",
-  winSkip(463),
-  async (t) => {
-    const world = await startWorld({ observeMs: 50 });
-    t.after(world.stop);
-    await base(world);
-    const desk = await alice(world);
-    t.after(desk.remove);
-    await payment(world);
+test("attaching a plan to a claim notifies work that uses the code before it changes; a new plan replaces the old one; releasing without doing it sends cancelled", async (t) => {
+  const world = await startWorld({ observeMs: 50 });
+  t.after(world.stop);
+  await base(world);
+  const desk = await alice(world);
+  t.after(desk.remove);
+  await payment(world);
 
-    // Declare a signature change to refund and leave the code alone. If the notice is up quickly, the owner's mailbox news is attached to the end of this command's reply.
-    const claimed = await omagari(world, [
-      "claim",
-      "src/pay.ts",
-      "--symbol",
-      "refund",
-      "--plan",
-      "signature",
-      "--detail",
-      "refund(amount, reason)",
-    ]);
-    assert.match(
-      claimed,
-      /^Claimed on payment: "refund" in "src\/pay.ts" lines 4-6 · plan: Signature change "refund" "refund\(amount, reason\)"\n/,
-    );
-    const signature = {
-      kind: "signature",
-      symbol: "refund",
-      detail: "refund(amount, reason)",
-    };
-    const first = await eventually(async () => {
-      const found = await declared(world.owner);
-      assert.equal(found.length, 1, JSON.stringify(found));
-      return found[0] as Declared;
-    });
-    assert.deepEqual(first, {
-      id: first.id,
-      kind: "declared",
-      works: [ALICE, OWNER],
-      symbols: [
-        {
-          name: "refund",
-          places: [USES, [{ path: "src/pay.ts", line: 4, role: "declared" }]],
-          plan: signature,
-        },
-      ],
-      more: 0,
-      resolved: null,
-    });
-    // It goes into the mailboxes of both the user and the changer.
-    await receives(
-      world,
-      desk.folder,
-      `- Declared Contract change: my Work and owner's branch "payment". One side declared in its Claim that it will change the symbol (the code may not have changed yet), and the other side uses that name. "refund" (me: Uses "src/checkout.ts":1, "src/checkout.ts":2 / them: Declared a change "src/pay.ts":4 / plan: Signature change "refund" "refund(amount, reason)")`,
-    );
-    await receives(
-      world,
-      world.repo.folder,
-      `- Declared Contract change: my Work and alice's branch "refund". One side declared in its Claim that it will change the symbol (the code may not have changed yet), and the other side uses that name. "refund" (me: Declared a change "src/pay.ts":4 / them: Uses "src/checkout.ts":1, "src/checkout.ts":2 / plan: Signature change "refund" "refund(amount, reason)")`,
-      inboxLines(claimed),
-    );
+  // Declare a signature change to refund and leave the code alone. If the notice is up quickly, the owner's mailbox news is attached to the end of this command's reply.
+  const claimed = await omagari(world, [
+    "claim",
+    "src/pay.ts",
+    "--symbol",
+    "refund",
+    "--plan",
+    "signature",
+    "--detail",
+    "refund(amount, reason)",
+  ]);
+  assert.match(
+    claimed,
+    /^Claimed on payment: "refund" in "src\/pay.ts" lines 4-6 · plan: Signature change "refund" "refund\(amount, reason\)"\n/,
+  );
+  const signature = {
+    kind: "signature",
+    symbol: "refund",
+    detail: "refund(amount, reason)",
+  };
+  const first = await eventually(async () => {
+    const found = await declared(world.owner);
+    assert.equal(found.length, 1, JSON.stringify(found));
+    return found[0] as Declared;
+  });
+  assert.deepEqual(first, {
+    id: first.id,
+    kind: "declared",
+    works: [ALICE, OWNER],
+    symbols: [
+      {
+        name: "refund",
+        places: [USES, [{ path: "src/pay.ts", line: 4, role: "declared" }]],
+        plan: signature,
+      },
+    ],
+    more: 0,
+    resolved: null,
+  });
+  // It goes into the mailboxes of both the user and the changer.
+  await receives(
+    world,
+    desk.folder,
+    `- Declared Contract change: my Work and owner's branch "payment". One side declared in its Claim that it will change the symbol (the code may not have changed yet), and the other side uses that name. "refund" (me: Uses "src/checkout.ts":1, "src/checkout.ts":2 / them: Declared a change "src/pay.ts":4 / plan: Signature change "refund" "refund(amount, reason)")`,
+  );
+  await receives(
+    world,
+    world.repo.folder,
+    `- Declared Contract change: my Work and alice's branch "refund". One side declared in its Claim that it will change the symbol (the code may not have changed yet), and the other side uses that name. "refund" (me: Declared a change "src/pay.ts":4 / them: Uses "src/checkout.ts":1, "src/checkout.ts":2 / plan: Signature change "refund" "refund(amount, reason)")`,
+    inboxLines(claimed),
+  );
 
-    // The user's omagari impact shows the attached plan.
-    assert.match(
-      await omagari(world, ["impact", "refund"], desk.folder),
-      /Other members' Claims that declare a change \(with a plan attached\):\n {2}owner's branch "payment" · "refund" in "src\/pay.ts" lines 4-6 · plan: Signature change "refund" "refund\(amount, reason\)"\n/,
-    );
+  // The user's omagari impact shows the attached plan.
+  assert.match(
+    await omagari(world, ["impact", "refund"], desk.folder),
+    /Other members' Claims that declare a change \(with a plan attached\):\n {2}owner's branch "payment" · "refund" in "src\/pay.ts" lines 4-6 · plan: Signature change "refund" "refund\(amount, reason\)"\n/,
+  );
 
-    // A new plan on the same symbol at another place (line range) replaces the old plan, and the same notice is updated to the new plan.
-    await omagari(world, ["claim", "src/pay.ts", "--lines", "4-6", "--plan", "rename:refund"]);
-    await eventually(async () => {
-      const found = await declared(world.owner);
-      assert.equal(found.length, 1, JSON.stringify(found));
-      assert.equal(found[0]?.id, first.id);
-      assert.deepEqual(
-        found[0]?.symbols.map((s) => s.plan),
-        [{ kind: "rename", symbol: "refund" }],
-      );
-    });
+  // A new plan on the same symbol at another place (line range) replaces the old plan, and the same notice is updated to the new plan.
+  await omagari(world, ["claim", "src/pay.ts", "--lines", "4-6", "--plan", "rename:refund"]);
+  await eventually(async () => {
+    const found = await declared(world.owner);
+    assert.equal(found.length, 1, JSON.stringify(found));
+    assert.equal(found[0]?.id, first.id);
+    assert.deepEqual(
+      found[0]?.symbols.map((s) => s.plan),
+      [{ kind: "rename", symbol: "refund" }],
+    );
+  });
 
-    // Releasing a plan without doing it sends cancelled to the work that got the notice, and the notice is lifted.
-    // Every omagari command hands over the mailbox at the end of its reply, so the owner also saw the release reply.
-    const released = inboxLines(await omagari(world, ["release"]));
-    const seen = await receives(
-      world,
-      desk.folder,
-      `- Declared Contract change cancelled: owner's branch "payment" released the Claim on "refund" (plan: Rename) without carrying out the plan. If you changed anything to fit that plan, undo it or ask them.`,
-    );
-    await receives(
-      world,
-      desk.folder,
-      `- Resolved: my Work and owner's branch "payment"'s Declared contract change`,
-      seen,
-    );
-    assert.notEqual((await declared(world.owner))[0]?.resolved, null);
-    // The changer doesn't get cancelled.
-    const own = await receives(
-      world,
-      world.repo.folder,
-      `- Resolved: my Work and alice's branch "refund"'s Declared contract change`,
-      released,
-    );
-    assert.ok(!own.some((line) => line.includes("cancelled")), JSON.stringify(own));
-  },
-);
+  // Releasing a plan without doing it sends cancelled to the work that got the notice, and the notice is lifted.
+  // Every omagari command hands over the mailbox at the end of its reply, so the owner also saw the release reply.
+  const released = inboxLines(await omagari(world, ["release"]));
+  const seen = await receives(
+    world,
+    desk.folder,
+    `- Declared Contract change cancelled: owner's branch "payment" released the Claim on "refund" (plan: Rename) without carrying out the plan. If you changed anything to fit that plan, undo it or ask them.`,
+  );
+  await receives(
+    world,
+    desk.folder,
+    `- Resolved: my Work and owner's branch "payment"'s Declared contract change`,
+    seen,
+  );
+  assert.notEqual((await declared(world.owner))[0]?.resolved, null);
+  // The changer doesn't get cancelled.
+  const own = await receives(
+    world,
+    world.repo.folder,
+    `- Resolved: my Work and alice's branch "refund"'s Declared contract change`,
+    released,
+  );
+  assert.ok(!own.some((line) => line.includes("cancelled")), JSON.stringify(own));
+});
 
-test(
-  "releasing after changing the definition line as planned doesn't send cancelled",
-  winSkip(463),
-  async (t) => {
-    const world = await startWorld({ observeMs: 50 });
-    t.after(world.stop);
-    await base(world);
-    const desk = await alice(world);
-    t.after(desk.remove);
-    await payment(world);
+test("releasing after changing the definition line as planned doesn't send cancelled", async (t) => {
+  const world = await startWorld({ observeMs: 50 });
+  t.after(world.stop);
+  await base(world);
+  const desk = await alice(world);
+  t.after(desk.remove);
+  await payment(world);
 
-    await omagari(world, ["claim", "src/pay.ts", "--symbol", "refund", "--plan", "signature"]);
-    await eventually(async () => assert.equal((await declared(world.owner)).length, 1));
-    // Change the signature as planned, and wait until the server sees that definition line.
-    await writer(world.repo.folder)(
-      "src/pay.ts",
-      PAY.replace("refund(amount: number)", "refund(amount: number, reason: string)"),
+  await omagari(world, ["claim", "src/pay.ts", "--symbol", "refund", "--plan", "signature"]);
+  await eventually(async () => assert.equal((await declared(world.owner)).length, 1));
+  // Change the signature as planned, and wait until the server sees that definition line.
+  await writer(world.repo.folder)(
+    "src/pay.ts",
+    PAY.replace("refund(amount: number)", "refund(amount: number, reason: string)"),
+  );
+  await eventually(async () => {
+    const work = (await world.works(world.owner)).find((w) => w.branch === "payment");
+    const file = work?.files.find((f) => f.path === "src/pay.ts");
+    assert.ok(
+      file && "definitions" in file && file.definitions?.some((d) => d.change === "changed"),
     );
-    await eventually(async () => {
-      const work = (await world.works(world.owner)).find((w) => w.branch === "payment");
-      const file = work?.files.find((f) => f.path === "src/pay.ts");
-      assert.ok(
-        file && "definitions" in file && file.definitions?.some((d) => d.change === "changed"),
-      );
-    });
-    await omagari(world, ["release"]);
-    const seen = await receives(
-      world,
-      desk.folder,
-      `- Resolved: my Work and owner's branch "payment"'s Declared contract change`,
-    );
-    assert.ok(!seen.some((line) => line.includes("cancelled")), JSON.stringify(seen));
-  },
-);
+  });
+  await omagari(world, ["release"]);
+  const seen = await receives(
+    world,
+    desk.folder,
+    `- Resolved: my Work and owner's branch "payment"'s Declared contract change`,
+  );
+  assert.ok(!seen.some((line) => line.includes("cancelled")), JSON.stringify(seen));
+});
 
-test(
-  "--plan needs the right kind and an existing symbol, and isn't given to release",
-  winSkip(463),
-  async (t) => {
-    const world = await startWorld({ observeMs: 50 });
-    t.after(world.stop);
-    await base(world);
-    await payment(world);
-    for (const args of [
-      ["claim", "src/pay.ts", "--symbol", "refund", "--plan", "move"],
-      ["claim", "src/pay.ts", "--lines", "4-6", "--plan", "delete"],
-      ["claim", "src/pay.ts", "--symbol", "refund", "--detail", "x"],
-      ["release", "--plan", "delete:refund"],
-    ]) {
-      const { code, stderr } = await world.cli(...args);
-      assert.equal(code, 1, args.join(" "));
-      assert.match(stderr, /--plan|--detail/, args.join(" "));
-    }
-  },
-);
+test("--plan needs the right kind and an existing symbol, and isn't given to release", async (t) => {
+  const world = await startWorld({ observeMs: 50 });
+  t.after(world.stop);
+  await base(world);
+  await payment(world);
+  for (const args of [
+    ["claim", "src/pay.ts", "--symbol", "refund", "--plan", "move"],
+    ["claim", "src/pay.ts", "--lines", "4-6", "--plan", "delete"],
+    ["claim", "src/pay.ts", "--symbol", "refund", "--detail", "x"],
+    ["release", "--plan", "delete:refund"],
+  ]) {
+    const { code, stderr } = await world.cli(...args);
+    assert.equal(code, 1, args.join(" "));
+    assert.match(stderr, /--plan|--detail/, args.join(" "));
+  }
+});

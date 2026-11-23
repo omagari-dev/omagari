@@ -3,21 +3,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { api, call } from "@omagari/contract";
-import { startWorld, winSkip } from "./harness.ts";
+import { startWorld } from "./harness.ts";
 
-test("with no GIPHY key on the server, GIFs are off", winSkip(463), async (t) => {
+test("with no GIPHY key on the server, GIFs are off", async (t) => {
   const world = await startWorld();
   t.after(world.stop);
   assert.equal((await call(world.owner, api.me)).giphy, null); // the web doesn't show a GIF button
 });
 
-test(
-  "a signed-in member gets the server's GIPHY key for their browser",
-  winSkip(463),
-  async (t) => {
-    const world = await startWorld({ giphy: "giphy-web-key" });
-    t.after(world.stop);
-    assert.equal((await call(world.owner, api.me)).giphy, "giphy-web-key");
-    await assert.rejects(call(world.server, api.me), { code: "unauthorized" });
-  },
-);
+test("a signed-in member gets the server's GIPHY key for their browser", async (t) => {
+  const world = await startWorld({ giphy: "giphy-web-key" });
+  t.after(world.stop);
+  assert.equal((await call(world.owner, api.me)).giphy, "giphy-web-key");
+  await assert.rejects(call(world.server, api.me), { code: "unauthorized" });
+});

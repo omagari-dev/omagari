@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { dependencyProblem, NO_SECCOMP } from "@omagari/runner";
 import { CHECK_LIMITS, checkWork, osSandbox } from "../packages/runner/src/check.ts";
-import { fakeSandbox, startWorld, tempRepo, winSkip, writer } from "./harness.ts";
+import { fakeSandbox, notOnWindows, sandboxOnly, startWorld, tempRepo, writer } from "./harness.ts";
 
 /** Commits the files to the default branch (origin/main) so they look merged. The current branch must be main. */
 async function merge(
@@ -23,7 +23,7 @@ const config = (value: object) => `${JSON.stringify(value)}\n`;
 
 test(
   "omagari runner check carries my work, even uncommitted changes, into a temporary worktree, runs the default branch's check command inside the sandbox, and leaves it in the run log",
-  winSkip(463),
+  sandboxOnly,
   async (t) => {
     const fake = fakeSandbox();
     const world = await startWorld({ sandbox: fake.sandbox });
@@ -118,52 +118,48 @@ test(
   },
 );
 
-test(
-  "when the config file is missing, unreadable, or the sandbox can't be used, it doesn't run and shows why and how to fix it",
-  winSkip(463),
-  async (t) => {
-    const fake = fakeSandbox();
-    const world = await startWorld({ sandbox: fake.sandbox });
-    t.after(world.stop);
-    const { repo } = world;
+test("when the config file is missing, unreadable, or the sandbox can't be used, it doesn't run and shows why and how to fix it", async (t) => {
+  const fake = fakeSandbox();
+  const world = await startWorld({ sandbox: fake.sandbox });
+  t.after(world.stop);
+  const { repo } = world;
 
-    const none = await world.cli("runner", "check");
-    assert.equal(none.code, 1);
-    assert.match(none.stdout, /Verdict: Couldn't run/);
-    assert.match(
-      none.stdout,
-      /The default branch \(origin\/main\) has no \.omagari\.json\. How to set it: /,
-    );
-    // A config that exists only in the working folder is not read.
-    await writer(repo.folder)(".omagari.json", config({ check: "true" }));
-    assert.match((await world.cli("runner", "check")).stdout, /has no \.omagari\.json/);
-    await rm(join(repo.folder, ".omagari.json"));
+  const none = await world.cli("runner", "check");
+  assert.equal(none.code, 1);
+  assert.match(none.stdout, /Verdict: Couldn't run/);
+  assert.match(
+    none.stdout,
+    /The default branch \(origin\/main\) has no \.omagari\.json\. How to set it: /,
+  );
+  // A config that exists only in the working folder is not read.
+  await writer(repo.folder)(".omagari.json", config({ check: "true" }));
+  assert.match((await world.cli("runner", "check")).stdout, /has no \.omagari\.json/);
+  await rm(join(repo.folder, ".omagari.json"));
 
-    await merge(repo, { ".omagari.json": config({ chek: "npm test" }) });
-    const wrong = await world.cli("runner", "check");
-    assert.equal(wrong.code, 1);
-    assert.match(
-      wrong.stdout,
-      /Couldn't read \.omagari\.json on the default branch \(origin\/main\) \(it isn't JSON or has the wrong shape\)\. How to set it: /,
-    );
+  await merge(repo, { ".omagari.json": config({ chek: "npm test" }) });
+  const wrong = await world.cli("runner", "check");
+  assert.equal(wrong.code, 1);
+  assert.match(
+    wrong.stdout,
+    /Couldn't read \.omagari\.json on the default branch \(origin\/main\) \(it isn't JSON or has the wrong shape\)\. How to set it: /,
+  );
 
-    await merge(repo, { ".omagari.json": config({ check: "true" }) });
-    fake.unavailable = "Sandbox tool missing: bubblewrap. To install: sudo apt install bubblewrap";
-    const unsandboxed = await world.cli("runner", "check");
-    assert.equal(unsandboxed.code, 1);
-    assert.match(
-      unsandboxed.stdout,
-      /Verdict: Couldn't run \(\d+\.\ds\)\n {2}Sandbox tool missing: bubblewrap\. To install: /,
-    );
-    // There is no way to run without confining it.
-    assert.equal(fake.calls.length, 0);
-    assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
-  },
-);
+  await merge(repo, { ".omagari.json": config({ check: "true" }) });
+  fake.unavailable = "Sandbox tool missing: bubblewrap. To install: sudo apt install bubblewrap";
+  const unsandboxed = await world.cli("runner", "check");
+  assert.equal(unsandboxed.code, 1);
+  assert.match(
+    unsandboxed.stdout,
+    /Verdict: Couldn't run \(\d+\.\ds\)\n {2}Sandbox tool missing: bubblewrap\. To install: /,
+  );
+  // There is no way to run without confining it.
+  assert.equal(fake.calls.length, 0);
+  assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
+});
 
 test(
   "the setup command runs before the check command, and if it fails or goes over the limit it is cut off and is Couldn't run",
-  winSkip(463),
+  sandboxOnly,
   async (t) => {
     const fake = fakeSandbox();
     const limitMs = 2000;
@@ -245,7 +241,7 @@ test(
 
 // Start and stop the runner five times with the CLI.
 test("when the runner starts it announces that the check command runs inside the sandbox, and what --merge-check turned off or on stays in that repo", {
-  ...winSkip(463),
+  ...sandboxOnly,
   timeout: 60_000,
 }, async (t) => {
   const world = await startWorld();
@@ -307,127 +303,119 @@ test("when the runner starts it announces that the check command runs inside the
   assert.match(wrong.stderr, /Merge run must be one of on, off: maybe/);
 });
 
-test(
-  "the temporary worktree is reused under the repo's Git folder, and my folder's dependencies are linked, but workspace packages point inside the temporary worktree",
-  winSkip(463),
-  async (t) => {
-    const fake = fakeSandbox();
-    const world = await startWorld({ sandbox: fake.sandbox });
-    t.after(world.stop);
-    const { repo } = world;
-    const write = writer(repo.folder);
+test("the temporary worktree is reused under the repo's Git folder, and my folder's dependencies are linked, but workspace packages point inside the temporary worktree", async (t) => {
+  const fake = fakeSandbox();
+  const world = await startWorld({ sandbox: fake.sandbox });
+  t.after(world.stop);
+  const { repo } = world;
+  const write = writer(repo.folder);
 
-    // Two workspace packages, and installed dependencies: node_modules at the top and one level down, a workspace link, a scope folder.
-    await merge(repo, {
-      ".gitignore": "node_modules/\ndist/\n",
-      ".omagari.json": config({ check: "sh check.sh" }),
-      "check.sh": [
-        'test "$(cat node_modules/dep/index.txt)" = "installed one"',
-        'test "$(cat packages/app/node_modules/inner/index.txt)" = "inner one"',
-        "echo temp only > packages/lib/code.txt",
-        'test "$(cat node_modules/@ws/lib/code.txt)" = "temp only"',
-        'test "$(git status --porcelain)" = " M packages/lib/code.txt"',
-        "mkdir -p dist && echo built > dist/out.txt",
-        "echo new file > leftover.txt",
-        "",
-      ].join("\n"),
-      "packages/lib/code.txt": "merged code\n",
-      "packages/app/package.json": "{}\n",
-    });
-    await write("packages/lib/code.txt", "my work's code\n");
-    await write("node_modules/dep/index.txt", "installed one");
-    await write("packages/app/node_modules/inner/index.txt", "inner one");
-    await mkdir(join(repo.folder, "node_modules/@ws"), { recursive: true });
-    // A workspace link is a relative link, like npm. This link points to my folder's packages/lib (here it reads the same file that holds my work's code).
-    await symlink("../../packages/lib", join(repo.folder, "node_modules/@ws/lib"));
-    const before = await repo.git("status", "--porcelain");
+  // Two workspace packages, and installed dependencies: node_modules at the top and one level down, a workspace link, a scope folder.
+  await merge(repo, {
+    ".gitignore": "node_modules/\ndist/\n",
+    ".omagari.json": config({ check: "sh check.sh" }),
+    "check.sh": [
+      'test "$(cat node_modules/dep/index.txt)" = "installed one"',
+      'test "$(cat packages/app/node_modules/inner/index.txt)" = "inner one"',
+      "echo temp only > packages/lib/code.txt",
+      'test "$(cat node_modules/@ws/lib/code.txt)" = "temp only"',
+      'test "$(git status --porcelain)" = " M packages/lib/code.txt"',
+      "mkdir -p dist && echo built > dist/out.txt",
+      "echo new file > leftover.txt",
+      "",
+    ].join("\n"),
+    "packages/lib/code.txt": "merged code\n",
+    "packages/app/package.json": "{}\n",
+  });
+  await write("packages/lib/code.txt", "my work's code\n");
+  await write("node_modules/dep/index.txt", "installed one");
+  await write("packages/app/node_modules/inner/index.txt", "inner one");
+  await mkdir(join(repo.folder, "node_modules/@ws"), { recursive: true });
+  // A workspace link is a relative link, like npm. This link points to my folder's packages/lib (here it reads the same file that holds my work's code).
+  await symlink("../../packages/lib", join(repo.folder, "node_modules/@ws/lib"));
+  const before = await repo.git("status", "--porcelain");
 
-    const first = await world.cli("runner", "check");
-    assert.match(first.stdout, /Verdict: Pass/, first.stdout);
-    const second = await world.cli("runner", "check");
-    assert.match(second.stdout, /Verdict: Pass/, second.stdout);
+  const first = await world.cli("runner", "check");
+  assert.match(first.stdout, /Verdict: Pass/, first.stdout);
+  const second = await world.cli("runner", "check");
+  assert.match(second.stdout, /Verdict: Pass/, second.stdout);
 
-    // It runs under the repo's Git folder, and moves its place each run (#150). When it ends it goes back to the resting place. It doesn't show in my folder's git status or worktree list.
-    const [one, two] = fake.calls;
-    assert.ok(one && two);
-    assert.notEqual(one.folder, two.folder);
-    const gitDir = await realpath(join(repo.folder, ".git"));
-    for (const call of [one, two]) assert.equal(dirname(call.folder), join(gitDir, "omagari"));
-    const rest = join(gitDir, "omagari", "check-worktree");
-    const places = await readdir(join(gitDir, "omagari"));
-    assert.deepEqual(
-      places.filter((name) => name.startsWith("check-")),
-      ["check-worktree"],
-    );
-    assert.equal(await repo.git("status", "--porcelain"), before);
-    assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
+  // It runs under the repo's Git folder, and moves its place each run (#150). When it ends it goes back to the resting place. It doesn't show in my folder's git status or worktree list.
+  const [one, two] = fake.calls;
+  assert.ok(one && two);
+  assert.notEqual(one.folder, two.folder);
+  const gitDir = await realpath(join(repo.folder, ".git"));
+  for (const call of [one, two]) assert.equal(dirname(call.folder), join(gitDir, "omagari"));
+  const rest = join(gitDir, "omagari", "check-worktree");
+  const places = await readdir(join(gitDir, "omagari"));
+  assert.deepEqual(
+    places.filter((name) => name.startsWith("check-")),
+    ["check-worktree"],
+  );
+  assert.equal(await repo.git("status", "--porcelain"), before);
+  assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
 
-    // What the sandbox can read: only the object folder and the linked dependency folders. The repo's Git folder (the config that holds the remote URL's token) is not opened.
-    const read = one.policy.filesystem.allowRead ?? [];
-    assert.ok(read.includes(join(gitDir, "objects")));
-    assert.ok(read.includes(await realpath(join(repo.folder, "node_modules"))));
-    assert.ok(!read.includes(gitDir));
+  // What the sandbox can read: only the object folder and the linked dependency folders. The repo's Git folder (the config that holds the remote URL's token) is not opened.
+  const read = one.policy.filesystem.allowRead ?? [];
+  assert.ok(read.includes(join(gitDir, "objects")));
+  assert.ok(read.includes(await realpath(join(repo.folder, "node_modules"))));
+  assert.ok(!read.includes(gitDir));
 
-    // After running: tracked files are restored, new files and linked links are gone, and ignored build outputs stay.
-    assert.equal(await readFile(join(rest, "packages/lib/code.txt"), "utf8"), "my work's code\n");
-    await assert.rejects(access(join(rest, "leftover.txt")));
-    await assert.rejects(access(join(rest, "node_modules")));
-    assert.equal(await readFile(join(rest, "dist/out.txt"), "utf8"), "built\n");
-    // My folder is unchanged (what the command wrote goes only to the temporary worktree).
-    assert.equal(
-      await readFile(join(repo.folder, "packages/lib/code.txt"), "utf8"),
-      "my work's code\n",
-    );
-  },
-);
+  // After running: tracked files are restored, new files and linked links are gone, and ignored build outputs stay.
+  assert.equal(await readFile(join(rest, "packages/lib/code.txt"), "utf8"), "my work's code\n");
+  await assert.rejects(access(join(rest, "leftover.txt")));
+  await assert.rejects(access(join(rest, "node_modules")));
+  assert.equal(await readFile(join(rest, "dist/out.txt"), "utf8"), "built\n");
+  // My folder is unchanged (what the command wrote goes only to the temporary worktree).
+  assert.equal(
+    await readFile(join(repo.folder, "packages/lib/code.txt"), "utf8"),
+    "my work's code\n",
+  );
+});
 
-test(
-  "even if the check command changes the temporary worktree's Git config and hooks, the git the runner calls outside the sandbox doesn't run them (#144)",
-  winSkip(463),
-  async (t) => {
-    const fake = fakeSandbox();
-    const world = await startWorld({ sandbox: fake.sandbox });
-    t.after(world.stop);
-    const { repo } = world;
-    // If something runs outside the sandbox, a marker appears in this folder. The fake sandbox doesn't confine, so the check command writes only where the real sandbox opens (the temporary worktree and the git inside it).
-    const marks = await mkdtemp(join(tmpdir(), "omagari-escape-"));
-    t.after(() => rm(marks, { recursive: true, force: true }));
-    const touch = (name: string) => `touch '${join(marks, name)}'`;
-    await merge(repo, {
-      ".omagari.json": config({ check: "sh check.sh" }),
-      "check.sh": [
-        `git config core.fsmonitor "${touch("fsmonitor")}; false"`,
-        `git config filter.x.smudge "${touch("filter")}; cat"`,
-        `git config filter.x.clean "${touch("filter")}; cat"`,
-        "printf '* filter=x\\n' > .gitattributes",
-        'hooks="$PWD/hooks"',
-        'git config core.hooksPath "$hooks"',
-        'for dir in "$hooks" "$(git rev-parse --git-path hooks)"; do',
-        '  mkdir -p "$dir"',
-        "  for hook in reference-transaction post-checkout post-index-change; do",
-        `    printf '#!/bin/sh\\n${touch("hook")}\\n' > "$dir/$hook" && chmod +x "$dir/$hook"`,
-        "  done",
-        "done",
-        "",
-      ].join("\n"),
-    });
+test("even if the check command changes the temporary worktree's Git config and hooks, the git the runner calls outside the sandbox doesn't run them (#144)", async (t) => {
+  const fake = fakeSandbox();
+  const world = await startWorld({ sandbox: fake.sandbox });
+  t.after(world.stop);
+  const { repo } = world;
+  // If something runs outside the sandbox, a marker appears in this folder. The fake sandbox doesn't confine, so the check command writes only where the real sandbox opens (the temporary worktree and the git inside it).
+  const marks = await mkdtemp(join(tmpdir(), "omagari-escape-"));
+  t.after(() => rm(marks, { recursive: true, force: true }));
+  const touch = (name: string) => `touch '${join(marks, name)}'`;
+  await merge(repo, {
+    ".omagari.json": config({ check: "sh check.sh" }),
+    "check.sh": [
+      `git config core.fsmonitor "${touch("fsmonitor")}; false"`,
+      `git config filter.x.smudge "${touch("filter")}; cat"`,
+      `git config filter.x.clean "${touch("filter")}; cat"`,
+      "printf '* filter=x\\n' > .gitattributes",
+      'hooks="$PWD/hooks"',
+      'git config core.hooksPath "$hooks"',
+      'for dir in "$hooks" "$(git rev-parse --git-path hooks)"; do',
+      '  mkdir -p "$dir"',
+      "  for hook in reference-transaction post-checkout post-index-change; do",
+      `    printf '#!/bin/sh\\n${touch("hook")}\\n' > "$dir/$hook" && chmod +x "$dir/$hook"`,
+      "  done",
+      "done",
+      "",
+    ].join("\n"),
+  });
 
-    // It runs twice. The restore after the first and the preparation of the second are both git outside the sandbox.
-    for (let round = 0; round < 2; round++) {
-      const ran = await world.cli("runner", "check");
-      assert.match(ran.stdout, /Verdict: Pass/, ran.stdout);
-    }
-    assert.deepEqual(await readdir(marks), []);
-    // The Git folder that the git inside the sandbox uses is opened for writing.
-    const [call] = fake.calls;
-    assert.ok(call);
-    assert.equal(call.policy.filesystem.allowWrite?.length, 3);
-  },
-);
+  // It runs twice. The restore after the first and the preparation of the second are both git outside the sandbox.
+  for (let round = 0; round < 2; round++) {
+    const ran = await world.cli("runner", "check");
+    assert.match(ran.stdout, /Verdict: Pass/, ran.stdout);
+  }
+  assert.deepEqual(await readdir(marks), []);
+  // The Git folder that the git inside the sandbox uses is opened for writing.
+  const [call] = fake.calls;
+  assert.ok(call);
+  assert.equal(call.policy.filesystem.allowWrite?.length, 3);
+});
 
 test(
   "even if a leftover process after the check, or the check command, swaps the temporary worktree's dependency places for links that point outside, the runner doesn't write or delete outside the sandbox (#150)",
-  winSkip(463),
+  sandboxOnly,
   async (t) => {
     const fake = fakeSandbox();
     const world = await startWorld({ sandbox: fake.sandbox });
@@ -532,7 +520,7 @@ test("on plain Windows with the switch off, the reason for Couldn't run names WS
 
 test(
   "when a solo run on Linux looks broken by the Unix socket block, a reason is added; when it broke regardless of sockets or the machine doesn't block sockets, it isn't added",
-  winSkip(463),
+  notOnWindows("Linux only: the sandbox blocks Unix sockets there"),
   async (t) => {
     const fake = fakeSandbox();
     fake.blocksUnixSockets = true;
@@ -580,27 +568,23 @@ test("when the warning that the seccomp helper is missing appears, the machine c
   );
 });
 
-test(
-  "the .env and .env.* that observation always leaves out are not put into the check tree either, so they can't leave through the check command's output",
-  winSkip(463),
-  async (t) => {
-    const fake = fakeSandbox();
-    const world = await startWorld({ sandbox: fake.sandbox });
-    t.after(world.stop);
-    const { repo } = world;
-    await merge(repo, {
-      ".omagari.json": config({
-        check: "test ! -e .env && test ! -e config/.env.local && test -e .env.example",
-      }),
-      ".env.example": "KEY=\n",
-    });
-    const write = writer(repo.folder);
-    await write(".env", "KEY=DUMMY-SECRET\n"); // untracked and not gitignored
-    await write("config/.env.local", "KEY=DUMMY-SECRET\n");
+test("the .env and .env.* that observation always leaves out are not put into the check tree either, so they can't leave through the check command's output", async (t) => {
+  const fake = fakeSandbox();
+  const world = await startWorld({ sandbox: fake.sandbox });
+  t.after(world.stop);
+  const { repo } = world;
+  await merge(repo, {
+    ".omagari.json": config({
+      check: "test ! -e .env && test ! -e config/.env.local && test -e .env.example",
+    }),
+    ".env.example": "KEY=\n",
+  });
+  const write = writer(repo.folder);
+  await write(".env", "KEY=DUMMY-SECRET\n"); // untracked and not gitignored
+  await write("config/.env.local", "KEY=DUMMY-SECRET\n");
 
-    const checked = await world.cli("runner", "check");
-    assert.match(checked.stdout, /Verdict: Pass/);
-    // Files in my folder are unchanged.
-    assert.equal(await readFile(join(repo.folder, ".env"), "utf8"), "KEY=DUMMY-SECRET\n");
-  },
-);
+  const checked = await world.cli("runner", "check");
+  assert.match(checked.stdout, /Verdict: Pass/);
+  // Files in my folder are unchanged.
+  assert.equal(await readFile(join(repo.folder, ".env"), "utf8"), "KEY=DUMMY-SECRET\n");
+});

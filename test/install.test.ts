@@ -96,7 +96,7 @@ async function runInstalled(world: World, command: string, input: object, event:
 
 test(
   "one omagari install sets up the two hooks and the status-line skill in Claude Code, and both hooks run in a new work session",
-  winSkip(463),
+  winSkip(467),
   async (t) => {
     const world = await startWorld({ observeMs: 50 });
     t.after(world.stop);
@@ -177,7 +177,7 @@ test(
 
 test(
   "existing settings and hooks stay as they are and only the Omagari hook is added; installing twice leaves one even if the path changed",
-  winSkip(463),
+  winSkip(467),
   async (t) => {
     const world = await startWorld();
     t.after(world.stop);
@@ -270,7 +270,7 @@ test(
   },
 );
 
-test("an unreadable settings file is left alone and the install stops", winSkip(463), async (t) => {
+test("an unreadable settings file is left alone and the install stops", winSkip(467), async (t) => {
   const world = await startWorld();
   t.after(world.stop);
   await mkdir(world.claude, { recursive: true });
@@ -289,7 +289,7 @@ test("an unreadable settings file is left alone and the install stops", winSkip(
 
 test(
   "hooks run in every repo on this machine, but in a Git repo that never ran the Omagari runner they add and leave nothing",
-  winSkip(463),
+  winSkip(467),
   async (t) => {
     const world = await startWorld();
     t.after(world.stop);
@@ -318,7 +318,7 @@ test(
   },
 );
 
-test("omagari setup with no address signs in to the default server", winSkip(463), async (t) => {
+test("omagari setup with no address signs in to the default server", winSkip(467), async (t) => {
   const world = await startWorld();
   t.after(world.stop);
   world.github.grant("alice");
@@ -338,7 +338,7 @@ test("omagari setup with no address signs in to the default server", winSkip(463
 
 test(
   "omagari setup with an address signs in to that address, not the default",
-  winSkip(463),
+  winSkip(467),
   async (t) => {
     const world = await startWorld();
     t.after(world.stop);
@@ -359,7 +359,7 @@ test(
 
 test(
   "omagari setup <address> logs in on a clean home, installs the hooks and keeps the address, so status reaches that server even without OMAGARI_SERVER",
-  winSkip(463),
+  winSkip(467),
   async (t) => {
     const world = await startWorld();
     t.after(world.stop);
@@ -390,7 +390,7 @@ test(
 
 test(
   "omagari uninstall removes the hooks and skills and puts the agent config back to before setup, and only --sign-out deletes the session",
-  winSkip(463),
+  winSkip(467),
   async (t) => {
     const world = await startWorld();
     t.after(world.stop);

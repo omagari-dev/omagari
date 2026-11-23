@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { test } from "node:test";
-import { eventually, place, startWorld, winSkip, writer } from "./harness.ts";
+import { eventually, place, startWorld, writer } from "./harness.ts";
 
 // Each worktree calls Git many times and there are five steps, so this gets close to the default time limit (30 s) when run with other tests.
 test("branches of the registered folder and its linked worktrees are each observed as work, and adding or removing a worktree is followed", {
-  ...winSkip(463),
   timeout: 60_000,
 }, async (t) => {
   const world = await startWorld({ observeMs: 20 });
@@ -80,7 +79,7 @@ test("branches of the registered folder and its linked worktrees are each observ
   await follows(["feat-d", "main"]);
 });
 
-test("the content total limit (8MiB) counts all worktrees together", winSkip(463), async (t) => {
+test("the content total limit (8MiB) counts all worktrees together", async (t) => {
   const world = await startWorld({ observeMs: 20 });
   t.after(world.stop);
   const { git, folder } = world.repo;
