@@ -53,6 +53,10 @@
 .VPHome .VPHero .main > * {
   align-self: center;
 }
+/* The name is a flex item of h1.heading (column), so it needs its own centering. */
+.VPHome .VPHero h1.heading .name {
+  align-self: center;
+}
 .VPHome .VPHero .actions {
   justify-content: center;
 }
