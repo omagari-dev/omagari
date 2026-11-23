@@ -184,6 +184,8 @@ export const ko: Words = {
       runOn: "켜져 있어요. 샌드박스 안에서만 돌아요.",
       runOff: "꺼 두었어요. 다른 멤버의 러너가 돌린 판정은 그대로 보여요.",
       noSandbox: "이 기기에 샌드박스 도구가 없어 돌리지 않아요.",
+      runUnsandboxed: "샌드박스 없이 켜져 있어요. 팀원의 코드가 내 Windows 계정으로 돌아요.",
+      unsandboxedBadge: "켜짐, 샌드박스 없음",
       howToInstall: "까는 법",
       runnerOff: "러너가 꺼져 있어요.",
     },

@@ -11,6 +11,7 @@ import {
   realpath,
   rename,
   rm,
+  rmdir,
   stat,
   symlink,
   writeFile,
@@ -107,12 +108,12 @@ export const osSandbox: Sandbox = {
   async unavailable() {
     if (process.platform !== "darwin" && process.platform !== "linux")
       return process.platform === "win32"
-        ? "On Windows, start the runner inside WSL2. Keep the repo inside WSL2 too, and install bubblewrap, socat, and ripgrep in WSL2 (ADR-0038)"
+        ? WINDOWS_OFF
         : `The sandbox can't be used on this machine (${process.platform}), so nothing runs. Only a runner started on macOS, Linux, or Windows WSL2 runs check commands`;
     const { SandboxManager } = await import("@anthropic-ai/sandbox-runtime");
     return dependencyProblem(await SandboxManager.checkDependenciesAsync());
   },
-  async wrap({ command, policy }) {
+  async wrap({ command, env, policy }) {
     const { SandboxManager } = await import("@anthropic-ai/sandbox-runtime");
     initialized ??= SandboxManager.initialize(policy).catch((error) => {
       initialized = undefined;
@@ -122,7 +123,27 @@ export const osSandbox: Sandbox = {
     // 0.0.81 reads the Unix socket allowance (`network.allowUnixSockets`) only from the config set by `initialize` and `updateConfig`, not from the config passed per command
     // (`getAllowUnixSockets` in `sandbox-manager.js`). The temp folder differs on every run, so we set it to this run's config each time. Only one run goes at a time (`turn`).
     SandboxManager.updateConfig(policy);
-    return ["/bin/sh", "-c", await SandboxManager.wrapWithSandbox(command, undefined, policy)];
+    // sandbox-runtime overrides TMPDIR with /tmp/claude when it wraps (#146). Before the command, we restore the temp folder the runner gave. The runner process's environment is untouched.
+    const restore = `export TMPDIR='${(env.TMPDIR ?? "").replaceAll("'", `'\\''`)}'; ${command}`;
+    return ["/bin/sh", "-c", await SandboxManager.wrapWithSandbox(restore, undefined, policy)];
+  },
+};
+
+/** Why merge runs don't run on native Windows while the switch is off (ADR-0059). */
+export const WINDOWS_OFF =
+  "Windows has no sandbox that holds the check command in, so merge runs don't run here. For sandboxed merge runs, start the runner inside WSL2, keep the repo inside WSL2 too, and install bubblewrap, socat, and ripgrep there (ADR-0038). Or turn on merge runs without a sandbox, in a terminal yourself: omagari runner --merge-check unsandboxed";
+
+/**
+ * Native Windows with the switch on (ADR-0059): no sandbox. The command runs in `cmd.exe` as the person's Windows account, and the blocking config is ignored.
+ * What still holds is done outside the sandbox: the environment allowlist (`passedEnv`), the fresh place per run, the limits, and the job object that stops the whole tree (`sandboxed`).
+ */
+export const unsandboxed: Sandbox = {
+  async unavailable() {
+    if (process.platform !== "win32")
+      return "Merge runs without a sandbox are only for native Windows. On this machine they run inside the sandbox: omagari runner --merge-check on";
+  },
+  async wrap({ command }) {
+    return [process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", `"${command}"`];
   },
 };
 
@@ -192,17 +213,21 @@ export async function readCheck(folder: string, remote: string | undefined): Pro
 }
 
 /** What to tell the owner when the runner starts: whether merge runs are on and, if so, which command runs where (ADR-0034). */
-export function checkNotice(read: CheckRead, on: boolean) {
+export function checkNotice(read: CheckRead, mode: "on" | "off" | "unsandboxed") {
+  const on = mode !== "off";
   const toggle = `omagari runner --merge-check ${on ? "off" : "on"}`;
+  const state = mode === "unsandboxed" ? "on, without a sandbox" : mode;
   if (!on)
     return `Merge run (off): this machine doesn't run check commands. To turn it on: ${toggle}. Your choice stays in this repo.`;
   if (!read.config)
-    return `Merge run (on): there's no check command, so nothing runs. ${read.problem}\n  To turn it off: ${toggle}. Your choice stays in this repo.`;
+    return `Merge run (${state}): there's no check command, so nothing runs. ${read.problem}\n  To turn it off: ${toggle}. Your choice stays in this repo.`;
   return [
-    "Merge run (on): when your work and another member's work hit a (guessed) indirect conflict, the two works are merged and the command below runs on this machine automatically.",
+    `Merge run (${state}): when your work and another member's work hit a (guessed) indirect conflict, the two works are merged and the command below runs on this machine automatically.`,
     `  Check command: ${read.config.check}`,
     ...(read.config.setup ? [`  Setup command: ${read.config.setup}`] : []),
-    `  The commands are read from ${CHECK_FILE} on the default branch (${read.branch}) and run inside the sandbox: outside network, writes outside the temp folder, and reads of the home folder are blocked.`,
+    mode === "unsandboxed"
+      ? `  The commands are read from ${CHECK_FILE} on the default branch (${read.branch}) and run without a sandbox, as your Windows account: they can read your home folder, reach the outside network, and write outside the temp folder. Tokens and keys aren't passed to them, and everything they start is stopped when the run ends.`
+      : `  The commands are read from ${CHECK_FILE} on the default branch (${read.branch}) and run inside the sandbox: outside network, writes outside the temp folder, and reads of the home folder are blocked.`,
     `  To turn it off: ${toggle}. Your choice stays in this repo. To see whether it runs on this machine, use omagari runner check.`,
   ].join("\n");
 }
@@ -285,13 +310,40 @@ function policy(
   };
 }
 
-/** The environment variables passed in. The home folder can't be read, so `HOME` and `TMPDIR` point to the temp folder so tools write their config and cache there. */
+/** The ones passed on Windows, compared in upper case because Windows names are case-insensitive (`Path`). Without `SystemRoot` and `ComSpec`, Node and cmd.exe don't work. */
+const PASSED_ENV_WINDOWS = [
+  "PATH",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "SYSTEMDRIVE",
+  "WINDIR",
+  "COMSPEC",
+  "OS",
+  "PROCESSOR_ARCHITECTURE",
+  "NUMBER_OF_PROCESSORS",
+  "USERNAME",
+];
+
+/**
+ * The environment variables passed in. The home folder can't be read, so `HOME` and `TMPDIR` point to the temp folder so tools write their config and cache there.
+ * On Windows the places tools find the home and temp folders by (`USERPROFILE`, `APPDATA`, `TEMP` and so on) point there too.
+ */
 function passedEnv(temp: string) {
+  const windows = process.platform === "win32";
+  const allowed = (key: string) =>
+    windows
+      ? PASSED_ENV_WINDOWS.includes(key.toUpperCase())
+      : PASSED_ENV.includes(key) || key.startsWith("LC_");
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env))
-    if (value !== undefined && (PASSED_ENV.includes(key) || key.startsWith("LC_")))
-      env[key] = value;
-  return { ...env, HOME: temp, TMPDIR: temp };
+    if (value !== undefined && allowed(key)) env[key] = value;
+  const homes = windows ? ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"] : [];
+  return {
+    ...env,
+    ...Object.fromEntries(homes.map((key) => [key, temp])),
+    HOME: temp,
+    TMPDIR: temp,
+  };
 }
 
 const duration = (ms: number) => (ms >= 60_000 ? `${ms / 60_000} min` : `${ms / 1000} s`);
@@ -304,6 +356,77 @@ function tail(output: string) {
   return lines.slice(-TAIL_LINES).join("\n").slice(-TAIL_CHARS);
 }
 
+/** A job object that holds a process and everything it starts. Closing it kills them all (`KILL_ON_JOB_CLOSE`); it doesn't allow breakaway, so not even detached grandchildren get out. */
+const JOB_TYPE = `using System; using System.Runtime.InteropServices;
+public static class OmagariJob {
+  [StructLayout(LayoutKind.Sequential)] struct BasicLimit { public long A, B; public uint LimitFlags; public UIntPtr C, D; public uint E; public UIntPtr F; public uint G, H; }
+  [StructLayout(LayoutKind.Sequential)] struct IoCounters { public ulong A, B, C, D, E, F; }
+  [StructLayout(LayoutKind.Sequential)] struct ExtendedLimit { public BasicLimit Basic; public IoCounters Io; public UIntPtr A, B, C, D; }
+  [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr CreateJobObject(IntPtr attributes, string name);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetInformationJobObject(IntPtr job, int kind, ref ExtendedLimit info, int length);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool TerminateJobObject(IntPtr job, uint code);
+  public static IntPtr Hold(int pid) {
+    IntPtr job = CreateJobObject(IntPtr.Zero, null);
+    ExtendedLimit info = new ExtendedLimit();
+    info.Basic.LimitFlags = 0x2000;
+    IntPtr process = OpenProcess(0x0101, false, pid);
+    if (job == IntPtr.Zero || process == IntPtr.Zero || !SetInformationJobObject(job, 9, ref info, Marshal.SizeOf(info)) || !AssignProcessToJobObject(job, process))
+      throw new Exception("error " + Marshal.GetLastWin32Error());
+    return job;
+  }
+  public static void End(IntPtr job) { TerminateJobObject(job, 1); }
+}`;
+
+/**
+ * Windows has no process groups, so the command is held in a job object (ADR-0059). A PowerShell helper puts the process `pid` in a new job and holds it until its input closes,
+ * then ends everything in the job. The returned function closes it and waits. If the runner dies, the helper's input closes too, so nothing is left.
+ */
+async function holdInJob(pid: number) {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `Add-Type -TypeDefinition @'\n${JOB_TYPE}\n'@`,
+    `$job = [OmagariJob]::Hold(${pid})`,
+    "[Console]::Out.WriteLine('held'); [Console]::Out.Flush()",
+    "[void][Console]::In.ReadToEnd()",
+    "[OmagariJob]::End($job)",
+  ].join("\n");
+  const helper = spawn(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(script, "utf16le").toString("base64"),
+    ],
+    { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
+  );
+  let said = "";
+  const held = new Promise<void>((resolve, reject) => {
+    helper.stdout.setEncoding("utf8").on("data", (chunk) => {
+      said += chunk;
+      if (said.includes("held")) resolve();
+    });
+    helper.stderr.setEncoding("utf8").on("data", (chunk) => {
+      said += chunk;
+    });
+    helper.once("error", reject);
+    helper.once("exit", () =>
+      reject(new Error(`Couldn't hold the check command in a job object: ${said.trim()}`)),
+    );
+  });
+  const end = async () => {
+    helper.stdin.end();
+    if (helper.exitCode === null && helper.signalCode === null) await once(helper, "exit");
+  };
+  await held.catch(async (error) => {
+    await end().catch(() => {});
+    throw error;
+  });
+  return end;
+}
+
 /**
  * Runs one shell command locked in the sandbox within the limits. If time or output (when `outputBytes` is given) goes over, it cuts the run off and returns the limit that was exceeded (`cut`).
  * It starts in its own process group, so when the run is cut off or ends, anything the command started and left behind is killed too.
@@ -313,14 +436,36 @@ async function sandboxed(
   input: SandboxInput,
   limits: { ms: number; outputBytes?: number },
 ) {
-  const [file = "", ...args] = await sandbox.wrap(input);
+  const windows = process.platform === "win32";
+  // On Windows the command waits for one line before it starts, until it's held in the job object.
+  const [file = "", ...args] = await sandbox.wrap(
+    windows ? { ...input, command: `set /p OMAGARI_GO= & ${input.command}` } : input,
+  );
   const child = spawn(file, args, {
     cwd: input.folder,
     env: input.env,
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    detached: !windows,
+    windowsHide: true,
+    windowsVerbatimArguments: windows,
+    stdio: "pipe",
   });
+  // The command may end before it reads its input. A failed start shows in `close` below (or in the Windows check that it has a pid).
+  child.stdin.on("error", () => {});
+  let release: (() => Promise<void>) | undefined;
+  if (windows) {
+    const pid = child.pid;
+    child.once("error", () => {}); // Holding it takes a moment, and a failed start is reported as no pid
+    try {
+      if (pid === undefined) throw new Error(`Couldn't start ${file}`);
+      release = await holdInJob(pid);
+    } catch (error) {
+      child.kill();
+      throw error;
+    }
+  }
+  child.stdin.end(windows ? "\n" : "");
   const killGroup = () => {
+    if (release) return void release().catch(() => {});
     try {
       if (child.pid) process.kill(-child.pid, "SIGKILL");
     } catch {} // Already finished
@@ -341,13 +486,14 @@ async function sandboxed(
   };
   child.stdout.setEncoding("utf8").on("data", take);
   child.stderr.setEncoding("utf8").on("data", take);
-  // If something started in the background after the shell ends (like a server a test started) holds the output, it never closes. When the shell ends, we kill the whole group.
+  // If something started in the background after the shell ends (like a server a test started) holds the output, it never closes. When the shell ends, we kill the whole group (on Windows, the job).
   child.once("exit", killGroup);
   try {
     const [code] = (await once(child, "close")) as [number | null];
     return { code, cut, output: tail(output) };
   } finally {
     clearTimeout(timer);
+    await release?.();
   }
 }
 
@@ -355,6 +501,16 @@ async function sandboxed(
 const DEPS = ["node_modules", ".venv"];
 /** The folder that holds packages one level down. */
 const GROUPS = ["packages", "apps", "libs"];
+
+/**
+ * Links `target` at `path`. Windows needs admin rights or developer mode for symlinks, so there a folder becomes a junction and a file is copied (ADR-0059).
+ * Removing a junction with `rm` removes only the junction, not what it points to.
+ */
+async function link(target: string, path: string) {
+  if (process.platform !== "win32") return symlink(target, path);
+  if ((await stat(target)).isDirectory()) return symlink(target, path, "junction");
+  return copyFile(target, path);
+}
 
 /**
  * Links one dependency folder (`src`) of my folder to the same place (`dst`) in the temp worktree. If we linked it whole, Node would resolve the link to the real path
@@ -370,10 +526,10 @@ async function mirror(src: string, dst: string, folder: string, worktree: string
     if (!real) continue; // Broken link
     const inner = relative(folder, real);
     if (entry.isSymbolicLink() && under(folder, real) && !inner.split(sep).includes("node_modules"))
-      await symlink(join(worktree, inner), to);
+      await link(join(worktree, inner), to);
     else if (entry.isDirectory() && (entry.name.startsWith("@") || entry.name === ".bin"))
       await mirror(from, to, folder, worktree);
-    else await symlink(real, to);
+    else await link(real, to);
   }
 }
 
@@ -404,7 +560,7 @@ async function linkDeps(folder: string, worktree: string) {
       const dst = join(at, dep);
       await rm(dst, { recursive: true, force: true });
       if (dep === "node_modules") await mirror(src, dst, folder, worktree);
-      else await symlink(await realpath(src), dst);
+      else await link(await realpath(src), dst);
       links.push(dst);
       reads.push(await realpath(src));
     }
@@ -564,7 +720,7 @@ export async function observedTree(folder: string, work: { base: string; files: 
       alone: "theirs",
     });
   } finally {
-    await rm(run, { recursive: true, force: true });
+    await rm(run, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 
@@ -616,6 +772,8 @@ async function prepareWork(folder: string, run: string, tree: string) {
   await writeFile(join(gitDir, "objects", "info", "alternates"), `${join(common, "objects")}\n`);
   const place = async () => {
     // Move the one at the resting place to this run's place (moved onto an empty folder). If there's none (first time, or it was broken and deleted), start empty.
+    // Windows can't move a folder onto an existing one, so the empty one goes first there.
+    if (process.platform === "win32") await rmdir(worktree).catch(() => {});
     await rename(rest, worktree).catch((error) => {
       if (error.code !== "ENOENT") throw error;
     });
@@ -656,7 +814,7 @@ export type CheckResult = {
  * With `merge`, it runs on my work merged with the other side's work (a merge run). If lines conflict and can't merge, it's "could not run".
  * With `patch`, it puts the patch on top and runs (a debate experiment). If it doesn't apply, it's "could not run".
  * If there's a setup command, it runs first, and if that fails, it's "could not run". If the config couldn't be read or the sandbox can't be used, nothing runs.
- * There's no way to run without locking it in. The temp worktree sits under the repo's Git folder and is reused.
+ * The only way to run without locking it in is `unsandboxed`, which a person turns on on native Windows (ADR-0059). The temp worktree sits under the repo's Git folder and is reused.
  */
 export function checkWork(options: {
   folder: string;
@@ -707,7 +865,9 @@ async function checkOne(options: {
   // One temp folder holds the temp worktree and the temp folders the command uses (`HOME`, `TMPDIR`). Paths are real paths, to match the sandbox config.
   // The command opens Unix sockets in the temp folder, so it goes somewhere short. In macOS's user temp folder (`/var/folders/…/T/`) the socket path would pass the 104-byte limit, so it goes in `/tmp` (ADR-0037).
   // ponytail: If it fits in 40 bytes, we use it as is. A runner that runs inside a sandbox (this repo's tests) can't write to `/tmp`, and the temp folder it's given is short.
-  const base = Buffer.byteLength(tmpdir()) <= 40 ? tmpdir() : "/tmp";
+  // Windows has no `/tmp`, and no sandbox there limits socket paths, so it always uses its own temp folder.
+  const base =
+    process.platform === "win32" || Buffer.byteLength(tmpdir()) <= 40 ? tmpdir() : "/tmp";
   const run = await realpath(await mkdtemp(join(base, "omagari-check-")));
   const temp = join(run, "tmp");
   let work: Awaited<ReturnType<typeof prepareWork>> | undefined;
@@ -732,9 +892,8 @@ async function checkOne(options: {
     links = deps.links;
     const drives = windowsDrives(await (options.mounts ?? osMounts)());
     const readable = [join(common, "objects"), ...deps.reads];
-    // sandbox-runtime overrides TMPDIR with /tmp/claude when it wraps (#146). Before the command, the runner restores the temp folder it gave. The runner process's environment is untouched.
     const input = (command: string) => ({
-      command: `export TMPDIR='${temp.replaceAll("'", `'\\''`)}'; ${command}`,
+      command,
       folder: worktree,
       env: passedEnv(temp),
       policy: policy([worktree, temp, sandboxGit], readable, [worktree, temp], drives),
@@ -790,6 +949,6 @@ async function checkOne(options: {
         await reset(work.gitDir, rest, work.tree).catch(() => {});
       } else await rm(worktree, { recursive: true, force: true });
     }
-    await rm(run, { recursive: true, force: true });
+    await rm(run, { recursive: true, force: true, maxRetries: 3 });
   }
 }

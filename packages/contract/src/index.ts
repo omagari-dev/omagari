@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 71;
+export const CONTRACT_VERSION = 72;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -1259,9 +1259,10 @@ export const CheckConfig = z.strictObject({
 export type CheckConfig = z.infer<typeof CheckConfig>;
 
 /**
- * This runner's merge run: on, turned off (`omagari runner --merge-check off`), or turned on but not run because this machine has no sandbox tool (ADR-0033, ADR-0034).
+ * This runner's merge run: on, turned off (`omagari runner --merge-check off`), turned on but not run because this machine has no sandbox tool (ADR-0033, ADR-0034),
+ * or on without a sandbox (`unsandboxed`), which a person turned on on native Windows (`omagari runner --merge-check unsandboxed`, ADR-0059).
  */
-export const MergeCheckState = z.enum(["on", "off", "no_sandbox"]);
+export const MergeCheckState = z.enum(["on", "off", "no_sandbox", "unsandboxed"]);
 export type MergeCheckState = z.infer<typeof MergeCheckState>;
 
 /**

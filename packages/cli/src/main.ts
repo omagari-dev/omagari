@@ -50,6 +50,7 @@ import {
 import { background } from "./background.ts";
 import { install, uninstall } from "./install.ts";
 import { register, unregister, unsupported } from "./service.ts";
+import { confirmUnsandboxed } from "./unsandboxed.ts";
 import { restart, UPDATED, type UpdateRecord, update } from "./update.ts";
 
 /** First line of commands that show other people's text in quotes (status, impact). Same meaning as the hooks' notice. */
@@ -64,13 +65,18 @@ const DEBATE_PATHS = [
   ["expired", "expired"],
 ] as const;
 
+/** What `--merge-check` takes. Without a sandbox only on native Windows (ADR-0059). */
+const MERGE_CHECKS =
+  process.platform === "win32" ? (["on", "off", "unsandboxed"] as const) : (["on", "off"] as const);
+
 const USAGE = `Usage:
   omagari --help                Show this usage
   omagari --version             Show the version (the npm package's, or the git tag in a clone) and contract version
-  omagari runner [--share <level>] [--merge-check on|off]
+  omagari runner [--share <level>] [--merge-check on|off|unsandboxed]
                                 Start the runner in the repo folder. On first run, log in with GitHub device flow
                                 Share level is full (default), declared (paths only), or intent (status line only). Your choice is kept for this repo
                                 --merge-check turns merge runs on (on, default) or off (off). Your choice is kept for this repo
+                                On native Windows, unsandboxed runs them without a sandbox. It shows the risk and needs yes typed in a terminal
   omagari runner check          Run the check command in ${CHECK_FILE} on the default branch once, in the sandbox, against your Work in this folder (uncommitted changes included),
                                 and show pass, broken, or couldn't run. Use it to confirm the check command runs on this machine
   omagari runner ask <message>  Ask this repo's runner session. The next question continues in the same session
@@ -356,10 +362,18 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
   if (watched.includes(paths.socket))
     return console.log("The background runner already watches this folder");
   const share = await remembered(paths.share, chosen, "Share level", ShareLevel.options);
-  const mergeCheck = await remembered(paths.mergeCheck, chosenMergeCheck, "Merge run", [
-    "on",
-    "off",
-  ]);
+  // Only a person turns on merge runs without a sandbox (ADR-0059). Anything other than yes keeps the earlier choice.
+  if (
+    chosenMergeCheck === "unsandboxed" &&
+    !(await confirmUnsandboxed("omagari runner --merge-check unsandboxed"))
+  )
+    throw new Error("Merge runs without a sandbox weren't turned on");
+  const mergeCheck = await remembered(
+    paths.mergeCheck,
+    chosenMergeCheck,
+    "Merge run",
+    MERGE_CHECKS,
+  );
   // Before logging in and connecting, so before anything is sent, say what will be sent.
   console.log(observationNotice(share));
   const saved = (await readSessions())[server];
@@ -381,7 +395,7 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
   console.log(`Agents: ${running.executors.map((id) => EXECUTOR_NAMES[id]).join(", ")}`);
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, running.stop);
   // The check command is read from the default branch, so announce it after learning which remote the server accepted. A merge run has to wait for things to quiet down even after connecting.
-  console.log(checkNotice(await readCheck(running.folder, running.remote), mergeCheck === "on"));
+  console.log(checkNotice(await readCheck(running.folder, running.remote), mergeCheck));
   const reason = await running.ended;
   // The same goes if it's rejected while reconnecting after startup (the server restarted with a new contract).
   if (reason) await selfUpdate(reason, paths.log);
@@ -392,7 +406,7 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
 async function startIn(folder: string) {
   const paths = await runnerPaths(folder);
   const share = await remembered(paths.share, undefined, "Share level", ShareLevel.options);
-  const mergeCheck = await remembered(paths.mergeCheck, undefined, "Merge run", ["on", "off"]);
+  const mergeCheck = await remembered(paths.mergeCheck, undefined, "Merge run", MERGE_CHECKS);
   const session = (await readSessions())[server];
   if (!session) throw new Error(`Not signed in to ${server}. Run omagari setup`);
   // Starting by itself isn't a yes to share the repo (ADR-0049).

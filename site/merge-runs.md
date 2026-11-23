@@ -27,9 +27,25 @@ The sandbox blocks outside network access, writes outside a temp folder, and rea
 
 Without them, the runner still works, but it doesn't run merge runs, and the web says this machine has no sandbox tool.
 
+## Windows
+
+Windows has no sandbox yet that holds the check command in. On native Windows (not WSL2) merge runs don't run unless you turn them on without a sandbox. For sandboxed merge runs, start the runner inside WSL2 and install the Linux tools there.
+
+To run them here anyway, run this in the repo folder, in a terminal yourself:
+
+```bash
+omagari runner --merge-check unsandboxed
+```
+
+It shows what on and off do and the risk, and turns it on only when you type `yes`. An agent can't turn it on: without a terminal it's refused. Anyone can turn it off with `--merge-check off`. The choice is per repo, and **Settings → Merge run** on the web shows "On, no sandbox".
+
+**The risk:** teammates' unpushed code comes through the server and runs as your Windows account. If the server is broken into, or a teammate's test is malicious, it can read your SSH keys, tokens and browser cookies. Only turn it on if you trust the server and everyone in your workspaces.
+
+What still holds without a sandbox: the check command comes from `.omagari.json` on the default branch, never the server. Tokens and keys aren't passed in the environment. Each run uses a fresh temp worktree with its own Git folder. The 5-minute limit applies, and everything the command started is stopped when the run ends. What it doesn't block: reading your home folder, the outside network, and writing outside the temp folder.
+
 ## Turning it off
 
-Merge runs are on by default. To turn them off on this machine, start the runner with `omagari runner --merge-check off`. The choice is remembered per repo. Turning it on and off happens on the runner, not the web, so the server can't decide what runs on your machine. Verdicts other members' runners ran still show.
+Merge runs are on by default (on native Windows, see [Windows](#windows)). To turn them off on this machine, start the runner with `omagari runner --merge-check off`. The choice is remembered per repo. Turning it on and off happens on the runner, not the web, so the server can't decide what runs on your machine. Verdicts other members' runners ran still show.
 
 ## Reading the verdict
 

@@ -110,7 +110,7 @@ omagari setup
 |---|---|
 | `omagari setup [<주소>]` | 로그인하고 서버 주소를 저장하고, 이 기기의 에이전트에 훅과 상태 한 줄 스킬을 깔고, 로그인할 때 켜지는 백그라운드 러너를 등록해요 |
 | `omagari uninstall` | 훅과 스킬을 빼요(`--sign-out`이면 로그인도 끝내요) |
-| `omagari runner` | 레포 폴더에서 러너를 켜요(`--share full\|declared\|intent`로 올릴 것을 고르고, `--merge-check on\|off`) |
+| `omagari runner` | 레포 폴더에서 러너를 켜요(`--share full\|declared\|intent`로 올릴 것을 고르고, `--merge-check on\|off`, Windows 그대로에서는 `unsandboxed`) |
 | `omagari share on\|off` | 이 레포를 팀에 한 번 공유하거나(다른 기기에서도 그대로예요) 공유를 멈춰요. 공유하기 전에는 러너가 이 레포를 관측하지 않아요 |
 | `omagari runner check` | 지금 내 작업에 검사 명령을 샌드박스에서 한 번 돌려 봐요 |
 | `omagari runner ask <메시지>` / `runner log` | 이 레포의 러너 세션에 묻거나, 러너가 실행한 것을 봐요 |
