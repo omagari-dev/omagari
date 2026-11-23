@@ -41,10 +41,17 @@ const FAKE_CLAUDE = executable("./fake-claude.ts");
 const FAKE_SERVICE = executable("./fake-service.ts");
 
 /** Puts a `name` command in the `bin` folder. Calling it runs a fake CLI script (`script`). */
-const shim = (bin: string, name: string, script: string) =>
-  writeFile(join(bin, name), `#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`, {
-    mode: 0o755,
-  });
+const shim = (bin: string, name: string, script: string, ...extra: string[]) =>
+  process.platform === "win32"
+    ? writeFile(
+        join(bin, `${name}.cmd`),
+        `@"${process.execPath}" "${script}" ${extra.join(" ")} %*\r\n`,
+      )
+    : writeFile(
+        join(bin, name),
+        `#!/bin/sh\nexec '${process.execPath}' '${script}' ${extra.join(" ")} "$@"\n`,
+        { mode: 0o755 },
+      );
 
 // The Git that the runner and CLI call also doesn't read the machine's Git config (global gitignore and so on).
 process.env.GIT_CONFIG_GLOBAL = devNull;
@@ -699,7 +706,9 @@ export function fakeSandbox() {
       unavailable: async () => fake.unavailable,
       wrap: async (input) => {
         fake.calls.push(input);
-        return ["/bin/sh", "-c", input.command];
+        return process.platform === "win32"
+          ? [process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", input.command]
+          : ["/bin/sh", "-c", input.command];
       },
     },
   };
@@ -962,12 +971,7 @@ export async function startWorld(
   await mkdir(bin);
   await shim(bin, "claude", FAKE_CLAUDE);
   // `omagari setup` registers the background runner with launchd or systemd. Fakes stand in for both, and the plist goes to a temp home (ADR-0050).
-  for (const name of ["launchctl", "systemctl"])
-    await writeFile(
-      join(bin, name),
-      `#!/bin/sh\nexec '${process.execPath}' '${FAKE_SERVICE}' ${name} "$@"\n`,
-      { mode: 0o755 },
-    );
+  for (const name of ["launchctl", "systemctl"]) await shim(bin, name, FAKE_SERVICE, name);
   const home = join(data, "home");
   const serviceCalls = join(data, "service-calls.jsonl");
   const cliEnv = () => ({
