@@ -84,7 +84,7 @@ Then open an agent session in your workspace repo and share the repo once, with 
 
 The web shows these two lines with your address filled in ("Connect your computer"). You can also paste them to your agent and ask it to run them.
 
-Need merge runs, updates, or Windows (WSL2)? See [Set up a machine](https://omagari.org/setup).
+Need merge runs, updates, or Windows? See [Set up a machine](https://omagari.org/setup).
 
 ## How it works
 
@@ -137,7 +137,7 @@ Claude Code and Codex, each on the owner's own login and usage.
 With the default share level (`full`), the content of the files you changed goes to your team's server, so teammates' runners can merge and check it. Pick `declared` (paths only) or `intent` (just your status line) with `omagari runner --share`. The choice is remembered per repo. On the hosted beta, that server is ours; see the [Privacy policy](https://omagari.org/privacy).
 
 **Does it work on Windows?**
-Run it inside WSL2, `omagari setup` included, and keep the repo in WSL2 too. See [Set up a machine](https://omagari.org/setup).
+Yes, natively in PowerShell, with no WSL2 needed. Merge runs there are off until you turn them on without a sandbox, which runs the check command as your Windows account. For sandboxed merge runs, use WSL2. See [Set up a machine](https://omagari.org/setup) and [Merge runs](https://omagari.org/merge-runs).
 
 **Can I use it without a team?**
 You can look around the UI with the [demo server](CONTRIBUTING.md#try-the-ui-without-a-team). Omagari is for 2 to 10 people, so alone there isn't much to see.

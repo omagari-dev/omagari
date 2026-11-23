@@ -36,7 +36,7 @@ The web shows the same two lines with your address filled in ("Getting started")
 
 ## The background runner
 
-There's one background runner per machine ([ADR-0049](https://github.com/omagari-dev/omagari/blob/dev/docs/adr/0049-background-runner-watches-shared-repos-agents-open.md)). `setup` registers it with launchd on macOS, and with a systemd user unit on Linux and WSL2. It starts at login, starts again if it crashes, and runs one runner per repo inside the same process. You don't start it, and you don't list folders.
+There's one background runner per machine ([ADR-0049](https://github.com/omagari-dev/omagari/blob/dev/docs/adr/0049-background-runner-watches-shared-repos-agents-open.md)). `setup` registers it with launchd on macOS, with a systemd user unit on Linux and WSL2, and with Task Scheduler on native Windows. It starts at login, starts again if it crashes, and runs one runner per repo inside the same process. You don't start it, and you don't list folders.
 
 - **Where it looks.** When an agent session starts in a folder, the session-start hook tells the runner. It remembers the folders it has seen, so they come back after a restart.
 - **What it watches.** Only repos you've shared. Share a repo once with the Share button on the web, or `omagari share on` in the repo folder. It follows you to your other machines. `omagari share off` stops it. Until you share, the runner connects but doesn't observe the repo, and your agent is told how to share it.
@@ -63,9 +63,16 @@ Still stuck? Open an issue on [GitHub](https://github.com/omagari-dev/omagari/is
 
 ## Windows
 
-Omagari runs on Windows through WSL2. Open a WSL2 terminal, install Node.js there, and do everything in this page inside it. Keep the repo inside WSL2 too, because Windows drives (`/mnt/c` and so on) aren't readable from the sandbox.
+Omagari runs natively on Windows, in PowerShell. You don't need WSL2 to watch your team's work or to share your own.
 
-`omagari setup` from PowerShell stops and says to use WSL2. If WSL2 runs without systemd, `setup` can't start the background runner at login. It tells you to add this to `/etc/wsl.conf`, run `wsl --shutdown` in Windows, open WSL2 again, and run `omagari setup` again:
+- **Setup.** `omagari setup` works in PowerShell, and so do the rest of the commands here.
+- **Background runner.** `setup` registers it with Task Scheduler, as a task for your own account. It starts when you log on and starts again if it fails. No console window shows. `omagari uninstall` removes it.
+- **Codex.** Open `/hooks` in Codex and trust the two Omagari hooks, the same as on other systems, or they won't run.
+- **Merge runs.** Off until you turn them on, because Windows has no sandbox yet. `setup` asks the first time. See [Merge runs](merge-runs#windows) for what on and off do, the risk, and how to change it.
+
+For sandboxed merge runs on Windows, use WSL2. Open a WSL2 terminal, install Node.js there, and do everything in this page inside it. Keep the repo inside WSL2 too, because Windows drives (`/mnt/c` and so on) aren't readable from the sandbox. Install bubblewrap, socat, and ripgrep there as well.
+
+If WSL2 runs without systemd, `setup` can't start the background runner at login. It tells you to add this to `/etc/wsl.conf`, run `wsl --shutdown` in Windows, open WSL2 again, and run `omagari setup` again:
 
 ```ini
 [boot]
@@ -74,7 +81,7 @@ systemd=true
 
 ## Merge runs
 
-Merge runs need a sandbox tool. On macOS there's nothing extra to install. On Linux and WSL2 you need bubblewrap, socat, and ripgrep. The check command, the sandbox, and turning merge runs off are in [Merge runs and the check command](merge-runs).
+Merge runs need a sandbox tool. On macOS there's nothing extra to install. On Linux and WSL2 you need bubblewrap, socat, and ripgrep. Native Windows has no sandbox yet, so its merge runs are off until you turn them on without one. The check command, the sandbox, the risk, and turning merge runs on and off are in [Merge runs and the check command](merge-runs).
 
 ## Update
 
