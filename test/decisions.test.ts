@@ -361,7 +361,7 @@ test("the window closes by the chosen length, and Omagari merges if there is no 
 });
 
 test("when an objection (a post and a GitHub change request) is raised, it does not merge even after the window closes, and when all are withdrawn it reopens with the same length", async (t) => {
-  const HOUR = 50; // a day is 1.2 seconds
+  const HOUR = process.platform === "win32" ? 200 : 50; // a day is 1.2 seconds (4.8 on Windows, whose slower runner can pass a short window between two polls)
   const { world, alice, post } = await postOf(t, HOUR);
   const fake = world.github;
   await call(alice, api.send, { channel: post, text: "I'll merge the payment side first" });

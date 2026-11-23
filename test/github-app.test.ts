@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { api, ContractFailure, call } from "@omagari/contract";
-import { REPO, startWorld } from "./harness.ts";
+import { REPO, startWorld, winSkip } from "./harness.ts";
 
 const INSTALL = "https://github.com/apps/omagari-test/installations/new";
 
@@ -23,33 +23,37 @@ test("with a GitHub App, an expiring token is refreshed before GitHub calls, so 
   assert.deepEqual(await world.agents(world.owner), { owner: "online" });
 });
 
-test("when GitHub rejects the refresh token, the session ends cleanly, and the web and CLI ask to sign in again", async (t) => {
-  const world = await startWorld({
-    recheckMs: 50,
-    githubApp: "omagari-test",
-    setup: (github) => github.app(300),
-  });
-  t.after(world.stop);
-  const web = await world.live(world.owner);
+test(
+  "when GitHub rejects the refresh token, the session ends cleanly, and the web and CLI ask to sign in again",
+  winSkip(467),
+  async (t) => {
+    const world = await startWorld({
+      recheckMs: 50,
+      githubApp: "omagari-test",
+      setup: (github) => github.app(300),
+    });
+    t.after(world.stop);
+    const web = await world.live(world.owner);
 
-  world.github.refreshTokens.clear();
-  const reason = await world.runner.ended;
-  assert.ok(reason instanceof ContractFailure);
-  assert.equal(reason.code, "unauthorized");
-  assert.equal(reason.message, "GitHub sign-in expired. Log in again (omagari setup)");
-  assert.equal(await web.closed, 1008); // the web goes back to its login screen
-  await assert.rejects(call(world.owner, api.me), { code: "unauthorized" });
+    world.github.refreshTokens.clear();
+    const reason = await world.runner.ended;
+    assert.ok(reason instanceof ContractFailure);
+    assert.equal(reason.code, "unauthorized");
+    assert.equal(reason.message, "GitHub sign-in expired. Log in again (omagari setup)");
+    assert.equal(await web.closed, 1008); // the web goes back to its login screen
+    await assert.rejects(call(world.owner, api.me), { code: "unauthorized" });
 
-  // The CLI kept the ended session. Setup notices and signs in again.
-  await world.signInCli(world.owner);
-  const setup = world.launchCliIn(world.repo.folder, "setup");
-  t.after(() => setup.stop("SIGKILL"));
-  const [, code] = await setup.output(/enter code (\S+)/);
-  world.github.approve(code, "owner");
-  const done = await setup.exited;
-  assert.equal(done.code, 0, done.stderr);
-  assert.match(done.stdout, /Logged in as owner/);
-});
+    // The CLI kept the ended session. Setup notices and signs in again.
+    await world.signInCli(world.owner);
+    const setup = world.launchCliIn(world.repo.folder, "setup");
+    t.after(() => setup.stop("SIGKILL"));
+    const [, code] = await setup.output(/enter code (\S+)/);
+    world.github.approve(code, "owner");
+    const done = await setup.exited;
+    assert.equal(done.code, 0, done.stderr);
+    assert.match(done.stdout, /Logged in as owner/);
+  },
+);
 
 test("a repo hidden because the GitHub App isn't installed on its account says to install it, with the link, in the web and CLI", async (t) => {
   const world = await startWorld({ githubApp: "omagari-test" });

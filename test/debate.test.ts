@@ -5,7 +5,16 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { api, type ContractFailure, call, type Debate } from "@omagari/contract";
 import { codex, type Executor, type Sandbox } from "@omagari/runner";
-import { eventually, fakeCodex, fakeExecutor, fakeSandbox, startWorld, writer } from "./harness.ts";
+import {
+  eventually,
+  fakeCodex,
+  fakeExecutor,
+  fakeSandbox,
+  gitPath,
+  sandboxOnly,
+  startWorld,
+  writer,
+} from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
 type As = { url: string; session: string };
@@ -141,7 +150,7 @@ ${JSON.stringify({
   assert.equal(owner.calls[0]?.fork, true);
   assert.equal(alice.calls[0]?.resume, undefined);
   assert.match(alice.calls[0]?.message ?? "", /taking part without context/);
-  assert.equal(alice.calls[0]?.folder, desk.folder);
+  assert.equal(alice.calls[0]?.folder, gitPath(desk.folder));
 
   // When alice gives hers, both are revealed, and each ground gets a mark of what was seen in each repo.
   gate.resolve();
@@ -576,46 +585,53 @@ async function experimentDebate(
   return { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox };
 }
 
-test("a patch attached to a stance is applied on top of the two works merged and run in the sandbox, and if only one option passes, it becomes the conclusion before the grounds", async (t) => {
-  const { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox } = await experimentDebate(t, {
-    owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
-    // Only alice has verified grounds, but the experiment comes first.
-    alice: {
-      claim: "fix the caller",
-      evidence: ["src/money.ts:2 body of refund"],
-      patch: CALLER_PATCH,
-    },
-  });
-  const ownerOption = stanceOf("add reason");
-  const aliceOption = stanceOf("fix the caller");
-  assert.deepEqual(
-    { ...ownerOption.stances[0]?.experiment, ms: 0 },
-    { patch: REASON_PATCH, verdict: "pass", check: "sh check.sh", ms: 0 },
-  );
-  assert.equal(aliceOption.stances[0]?.experiment?.verdict, "broken");
-  assert.equal(aliceOption.stances[0]?.experiment?.patch, `${CALLER_PATCH}\n`);
-  assert.equal(aliceOption.stances[0]?.evidence[0]?.mark, "verified");
-  assert.equal(debate.state, "concluded");
-  assert.equal(debate.conclusion?.by, "experiment");
-  assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
-  // The check command runs only inside the sandbox, in a temporary worktree under the repo's Git folder.
-  for (const fake of [ownerSandbox, aliceSandbox]) {
-    assert.ok(fake.calls.some((call) => call.command.endsWith("sh check.sh")));
-    assert.ok(fake.calls.every((call) => call.folder.includes("/omagari/check-run-")));
-  }
-  // The experiment stays in the run record.
-  const post = (await postOf(world.owner, "declared"))?.channel ?? "";
-  assert.match(
-    (await world.cli("runner", "log")).stdout,
-    new RegExp(
-      `check command "sh check.sh"  debate ${post} round 1 experiment payment \\+ refund of alice  .*verdict Pass`,
-    ),
-  );
-  assert.match(
-    (await world.cliIn(desk.folder, "runner", "log")).stdout,
-    new RegExp(`debate ${post} round 1 experiment refund \\+ payment of owner  .*verdict Broken`),
-  );
-});
+test(
+  "a patch attached to a stance is applied on top of the two works merged and run in the sandbox, and if only one option passes, it becomes the conclusion before the grounds",
+  sandboxOnly,
+  async (t) => {
+    const { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox } = await experimentDebate(
+      t,
+      {
+        owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
+        // Only alice has verified grounds, but the experiment comes first.
+        alice: {
+          claim: "fix the caller",
+          evidence: ["src/money.ts:2 body of refund"],
+          patch: CALLER_PATCH,
+        },
+      },
+    );
+    const ownerOption = stanceOf("add reason");
+    const aliceOption = stanceOf("fix the caller");
+    assert.deepEqual(
+      { ...ownerOption.stances[0]?.experiment, ms: 0 },
+      { patch: REASON_PATCH, verdict: "pass", check: "sh check.sh", ms: 0 },
+    );
+    assert.equal(aliceOption.stances[0]?.experiment?.verdict, "broken");
+    assert.equal(aliceOption.stances[0]?.experiment?.patch, `${CALLER_PATCH}\n`);
+    assert.equal(aliceOption.stances[0]?.evidence[0]?.mark, "verified");
+    assert.equal(debate.state, "concluded");
+    assert.equal(debate.conclusion?.by, "experiment");
+    assert.equal(debate.options[debate.conclusion?.option ?? -1]?.owner?.login, "owner");
+    // The check command runs only inside the sandbox, in a temporary worktree under the repo's Git folder.
+    for (const fake of [ownerSandbox, aliceSandbox]) {
+      assert.ok(fake.calls.some((call) => call.command.endsWith("sh check.sh")));
+      assert.ok(fake.calls.every((call) => call.folder.includes("/omagari/check-run-")));
+    }
+    // The experiment stays in the run record.
+    const post = (await postOf(world.owner, "declared"))?.channel ?? "";
+    assert.match(
+      (await world.cli("runner", "log")).stdout,
+      new RegExp(
+        `check command "sh check.sh"  debate ${post} round 1 experiment payment \\+ refund of alice  .*verdict Pass`,
+      ),
+    );
+    assert.match(
+      (await world.cliIn(desk.folder, "runner", "log")).stdout,
+      new RegExp(`debate ${post} round 1 experiment refund \\+ payment of owner  .*verdict Broken`),
+    );
+  },
+);
 
 test("a debate's patches are dropped after 30 days; the claims, grounds and conclusion stay", async (t) => {
   const { world, debate, stanceOf } = await experimentDebate(t, {
@@ -896,7 +912,7 @@ test("when a member calls a proxy, that member's runner starts it with only the 
     return proxyCalls()[0];
   });
   assert.equal(told?.resume, undefined);
-  assert.equal(told?.folder, bobDesk.desk.folder);
+  assert.equal(told?.folder, gitPath(bobDesk.desk.folder));
   assert.deepEqual(told?.tools, ["Read", "Grep", "Glob"]);
   assert.match(told?.message ?? "", /You are a proxy called in for alice \(alice\)/);
   assert.match(told?.message ?? "", /<absent_work branch="refund" share="full">/);

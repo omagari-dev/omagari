@@ -173,7 +173,7 @@ export const writer = (folder: string) => async (path: string, content: string |
 /** Temp folder to hold worktrees linked from outside the repo. Removed when the test ends. Takes a name and returns the path inside it. */
 export async function place(t: { after: (fn: () => Promise<void>) => void }) {
   const folder = await realpath(await mkdtemp(join(tmpdir(), "omagari-worktrees-")));
-  t.after(() => rm(folder, { recursive: true, force: true }));
+  t.after(() => rm(folder, { recursive: true, force: true, maxRetries: 10 }));
   return (name: string) => join(folder, name);
 }
 
@@ -205,7 +205,7 @@ export async function tempRepo(repo = REPO) {
   return {
     folder,
     git,
-    remove: () => rm(folder, { recursive: true, force: true }),
+    remove: () => rm(folder, { recursive: true, force: true, maxRetries: 10 }),
   };
 }
 
@@ -786,7 +786,7 @@ async function fakeCli(
   callsEnv: string,
 ) {
   const bin = await realpath(await mkdtemp(join(tmpdir(), `omagari-${name}-`)));
-  t.after(() => rm(bin, { recursive: true, force: true }));
+  t.after(() => rm(bin, { recursive: true, force: true, maxRetries: 10 }));
   await shim(bin, name, script);
   const calls = join(bin, "calls.jsonl");
   process.env.PATH = `${bin}${delimiter}${process.env.PATH}`;
@@ -884,7 +884,8 @@ export async function startWorld(
 ) {
   const repo = await tempRepo();
   const data = await mkdtemp(join(tmpdir(), "omagari-server-")); // the server's DB and the CLI's config
-  const cleanup = () => Promise.all([repo.remove(), rm(data, { recursive: true, force: true })]);
+  const cleanup = () =>
+    Promise.all([repo.remove(), rm(data, { recursive: true, force: true, maxRetries: 10 })]);
   const fake = fakeGitHub();
   options.setup?.(fake);
   const database = join(data, "omagari.db");
@@ -1232,6 +1233,17 @@ export async function startWorld(
     },
   };
 }
+
+/** Test options that skip a test on Windows for good, saying why it can't apply there. */
+export const notOnWindows = (reason: string) =>
+  process.platform === "win32" ? { skip: reason } : {};
+
+/** Native Windows has no sandbox (ADR-0059); merge runs there are unsandboxed, which `unsandboxed.test.ts` covers. */
+export const sandboxOnly = notOnWindows("native Windows has no sandbox (ADR-0059)");
+
+/** A folder as the runner reports it: Git's top level, which uses / on Windows too. */
+export const gitPath = (folder: string) =>
+  process.platform === "win32" ? folder.replaceAll("\\", "/") : folder;
 
 /** Test options that skip a test only on Windows, naming the stage 8 ticket (#463–#469) that makes it pass there. Nothing is skipped elsewhere. */
 export const winSkip = (ticket: number) =>

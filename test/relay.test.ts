@@ -7,6 +7,7 @@ import {
   eventually,
   fakeExecutor,
   gatedExecutor,
+  gitPath,
   startWorld,
   stubbed,
   tempRepo,
@@ -40,7 +41,7 @@ test("asking in a DM returns a QA waiting for the answer right away, and the own
   );
   for (const input of fake.calls) {
     assert.deepEqual(input.tools, ["Read", "Grep", "Glob"]); // read-only
-    assert.equal(input.folder, world.repo.folder); // the folder the owner registered
+    assert.equal(input.folder, gitPath(world.repo.folder)); // the folder the owner registered
   }
 });
 

@@ -138,9 +138,12 @@ writeFileSync(index, readFileSync(index, "utf8").replace(/CONTRACT_VERSION = \\d
 const pkg = installed + "/package.json";
 writeFileSync(pkg, readFileSync(pkg, "utf8").replace("0.0.0-dev.1", "0.0.0-dev.2"));
 `
-      : '#!/bin/sh\necho "$@" > npm-called\n',
+      : `#!${process.execPath}\nrequire("node:fs").writeFileSync("npm-called", process.argv.slice(2).join(" ") + "\\n");\n`,
   );
   await chmod(join(bin, "npm"), 0o755);
+  // On Windows the runner finds npm as npm.cmd (ADR-0060).
+  if (process.platform === "win32")
+    await writeFile(join(bin, "npm.cmd"), `@"${process.execPath}" "${join(bin, "npm")}" %*\r\n`);
 
   const hellos: number[] = [];
   const server = new WebSocketServer({ port: 0 });

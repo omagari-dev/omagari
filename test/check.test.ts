@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { dependencyProblem, NO_SECCOMP } from "@omagari/runner";
 import { CHECK_LIMITS, checkWork, osSandbox } from "../packages/runner/src/check.ts";
-import { fakeSandbox, startWorld, tempRepo, writer } from "./harness.ts";
+import { fakeSandbox, notOnWindows, sandboxOnly, startWorld, tempRepo, writer } from "./harness.ts";
 
 /** Commits the files to the default branch (origin/main) so they look merged. The current branch must be main. */
 async function merge(
@@ -21,98 +21,102 @@ async function merge(
 
 const config = (value: object) => `${JSON.stringify(value)}\n`;
 
-test("omagari runner check carries my work, even uncommitted changes, into a temporary worktree, runs the default branch's check command inside the sandbox, and leaves it in the run log", async (t) => {
-  const fake = fakeSandbox();
-  const world = await startWorld({ sandbox: fake.sandbox });
-  t.after(world.stop);
-  const { repo } = world;
-  const write = writer(repo.folder);
-  process.env.GITHUB_TOKEN = "ghp_secret_for_check";
-  process.env.OMAGARI_SECRET_KEY = "sk_secret_for_check";
-  t.after(() => {
-    delete process.env.GITHUB_TOKEN;
-    delete process.env.OMAGARI_SECRET_KEY;
-  });
+test(
+  "omagari runner check carries my work, even uncommitted changes, into a temporary worktree, runs the default branch's check command inside the sandbox, and leaves it in the run log",
+  sandboxOnly,
+  async (t) => {
+    const fake = fakeSandbox();
+    const world = await startWorld({ sandbox: fake.sandbox });
+    t.after(world.stop);
+    const { repo } = world;
+    const write = writer(repo.folder);
+    process.env.GITHUB_TOKEN = "ghp_secret_for_check";
+    process.env.OMAGARI_SECRET_KEY = "sk_secret_for_check";
+    t.after(() => {
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.OMAGARI_SECRET_KEY;
+    });
 
-  await merge(repo, {
-    ".omagari.json": config({ check: "sh check.sh" }),
-    "check.sh": "test ! -e gone.txt\n",
-    "gone.txt": "file to delete\n",
-  });
-  await repo.git("switch", "--create", "feat");
-  // Even if I change the config file on my branch and in my working folder, the default branch's command runs.
-  await write(".omagari.json", config({ check: "exit 0" }));
-  await repo.git("commit", "--all", "--message=my branch config");
-  await write(".omagari.json", config({ check: "true" }));
+    await merge(repo, {
+      ".omagari.json": config({ check: "sh check.sh" }),
+      "check.sh": "test ! -e gone.txt\n",
+      "gone.txt": "file to delete\n",
+    });
+    await repo.git("switch", "--create", "feat");
+    // Even if I change the config file on my branch and in my working folder, the default branch's command runs.
+    await write(".omagari.json", config({ check: "exit 0" }));
+    await repo.git("commit", "--all", "--message=my branch config");
+    await write(".omagari.json", config({ check: "true" }));
 
-  // An uncommitted deletion and an untracked new file are carried over.
-  await rm(join(repo.folder, "gone.txt"));
-  await write("check.sh", 'test ! -e gone.txt && test "$(cat new.txt)" = "new file"\n');
-  await write("new.txt", "new file\n");
-  const passed = await world.cli("runner", "check");
-  assert.equal(passed.code, 0, passed.stderr);
-  assert.match(
-    passed.stdout,
-    /Check command: sh check\.sh \(\.omagari\.json on default branch origin\/main\)/,
-  );
-  assert.match(passed.stdout, /Verdict: Pass \(\d+\.\ds\)/);
-  assert.doesNotMatch(passed.stdout, /End of output/);
+    // An uncommitted deletion and an untracked new file are carried over.
+    await rm(join(repo.folder, "gone.txt"));
+    await write("check.sh", 'test ! -e gone.txt && test "$(cat new.txt)" = "new file"\n');
+    await write("new.txt", "new file\n");
+    const passed = await world.cli("runner", "check");
+    assert.equal(passed.code, 0, passed.stderr);
+    assert.match(
+      passed.stdout,
+      /Check command: sh check\.sh \(\.omagari\.json on default branch origin\/main\)/,
+    );
+    assert.match(passed.stdout, /Verdict: Pass \(\d+\.\ds\)/);
+    assert.doesNotMatch(passed.stdout, /End of output/);
 
-  // What was handed to the sandbox: in the temporary worktree, outside network blocked, writes only to the temporary worktree and temporary folder, reading the home folder blocked.
-  assert.equal(fake.calls.length, 1);
-  const [call] = fake.calls;
-  assert.ok(call);
-  assert.notEqual(call.folder, repo.folder);
-  const temp = call.env.TMPDIR;
-  assert.ok(temp);
-  assert.equal(call.command, "sh check.sh");
-  // Unix sockets are opened and attached only under the temporary worktree and temporary folder (ADR-0037). The temporary folder is short, so socket paths in it don't exceed macOS's 104-byte limit.
-  assert.deepEqual(call.policy.network, {
-    allowedDomains: [],
-    deniedDomains: [],
-    allowLocalBinding: true,
-    allowUnixSockets: [call.folder, temp],
-  });
-  assert.ok(Buffer.byteLength(join(temp, `omagari-${"0".repeat(16)}.sock`)) < 104, temp);
-  assert.deepEqual(call.policy.filesystem.allowWrite?.slice(0, 2), [call.folder, temp]);
-  assert.deepEqual(call.policy.filesystem.denyRead, [homedir()]);
-  assert.deepEqual(call.policy.filesystem.allowRead?.slice(0, 2), [call.folder, temp]);
-  // Only chosen environment variables are passed on. Variables holding tokens and keys are not.
-  assert.equal(call.env.PATH, process.env.PATH);
-  assert.equal(call.env.HOME, temp);
-  for (const [key, value] of Object.entries(call.env)) {
-    assert.match(key, /^(PATH|LANG|LANGUAGE|TERM|TZ|USER|LOGNAME|SHELL|HOME|TMPDIR|LC_\w+)$/);
-    assert.doesNotMatch(value, /secret/);
-  }
-  // The temporary worktree is under the repo's Git folder, so it doesn't show up in my folder's worktree list.
-  assert.ok(call.folder.startsWith(await realpath(join(repo.folder, ".git"))));
-  assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
-  assert.equal(
-    await repo.git("status", "--porcelain"),
-    "M .omagari.json\n M check.sh\n D gone.txt\n?? new.txt", // the one leading space is trimmed
-  );
+    // What was handed to the sandbox: in the temporary worktree, outside network blocked, writes only to the temporary worktree and temporary folder, reading the home folder blocked.
+    assert.equal(fake.calls.length, 1);
+    const [call] = fake.calls;
+    assert.ok(call);
+    assert.notEqual(call.folder, repo.folder);
+    const temp = call.env.TMPDIR;
+    assert.ok(temp);
+    assert.equal(call.command, "sh check.sh");
+    // Unix sockets are opened and attached only under the temporary worktree and temporary folder (ADR-0037). The temporary folder is short, so socket paths in it don't exceed macOS's 104-byte limit.
+    assert.deepEqual(call.policy.network, {
+      allowedDomains: [],
+      deniedDomains: [],
+      allowLocalBinding: true,
+      allowUnixSockets: [call.folder, temp],
+    });
+    assert.ok(Buffer.byteLength(join(temp, `omagari-${"0".repeat(16)}.sock`)) < 104, temp);
+    assert.deepEqual(call.policy.filesystem.allowWrite?.slice(0, 2), [call.folder, temp]);
+    assert.deepEqual(call.policy.filesystem.denyRead, [homedir()]);
+    assert.deepEqual(call.policy.filesystem.allowRead?.slice(0, 2), [call.folder, temp]);
+    // Only chosen environment variables are passed on. Variables holding tokens and keys are not.
+    assert.equal(call.env.PATH, process.env.PATH);
+    assert.equal(call.env.HOME, temp);
+    for (const [key, value] of Object.entries(call.env)) {
+      assert.match(key, /^(PATH|LANG|LANGUAGE|TERM|TZ|USER|LOGNAME|SHELL|HOME|TMPDIR|LC_\w+)$/);
+      assert.doesNotMatch(value, /secret/);
+    }
+    // The temporary worktree is under the repo's Git folder, so it doesn't show up in my folder's worktree list.
+    assert.ok(call.folder.startsWith(await realpath(join(repo.folder, ".git"))));
+    assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
+    assert.equal(
+      await repo.git("status", "--porcelain"),
+      "M .omagari.json\n M check.sh\n D gone.txt\n?? new.txt", // the one leading space is trimmed
+    );
 
-  // If it breaks, it is Broken by exit code, and the tail of the output (last 25 lines) is shown.
-  await write("check.sh", "seq 1 40 >&2\necho failing test >&2\nexit 3\n");
-  const broken = await world.cli("runner", "check");
-  assert.equal(broken.code, 1);
-  assert.match(broken.stdout, /Verdict: Broken \(\d+\.\ds\)\nEnd of output:\n {2}17\n/);
-  assert.match(broken.stdout, / {2}40\n {2}failing test\n/);
-  assert.doesNotMatch(broken.stdout, / {2}16\n/);
+    // If it breaks, it is Broken by exit code, and the tail of the output (last 25 lines) is shown.
+    await write("check.sh", "seq 1 40 >&2\necho failing test >&2\nexit 3\n");
+    const broken = await world.cli("runner", "check");
+    assert.equal(broken.code, 1);
+    assert.match(broken.stdout, /Verdict: Broken \(\d+\.\ds\)\nEnd of output:\n {2}17\n/);
+    assert.match(broken.stdout, / {2}40\n {2}failing test\n/);
+    assert.doesNotMatch(broken.stdout, / {2}16\n/);
 
-  // What ran is left in the run log: the check command, the verdict, the time taken.
-  const log = await world.cli("runner", "log");
-  const lines = log.stdout.trimEnd().split("\n");
-  assert.equal(lines.length, 2);
-  assert.match(
-    lines[0] ?? "",
-    /check command "sh check\.sh" {2}folder .+ {2}verdict Pass {2}\d+\.\ds$/,
-  );
-  assert.match(
-    lines[1] ?? "",
-    /check command "sh check\.sh" {2}folder .+ {2}verdict Broken {2}\d+\.\ds$/,
-  );
-});
+    // What ran is left in the run log: the check command, the verdict, the time taken.
+    const log = await world.cli("runner", "log");
+    const lines = log.stdout.trimEnd().split("\n");
+    assert.equal(lines.length, 2);
+    assert.match(
+      lines[0] ?? "",
+      /check command "sh check\.sh" {2}folder .+ {2}verdict Pass {2}\d+\.\ds$/,
+    );
+    assert.match(
+      lines[1] ?? "",
+      /check command "sh check\.sh" {2}folder .+ {2}verdict Broken {2}\d+\.\ds$/,
+    );
+  },
+);
 
 test("when the config file is missing, unreadable, or the sandbox can't be used, it doesn't run and shows why and how to fix it", async (t) => {
   const fake = fakeSandbox();
@@ -153,86 +157,91 @@ test("when the config file is missing, unreadable, or the sandbox can't be used,
   assert.equal((await repo.git("worktree", "list")).split("\n").length, 1);
 });
 
-test("the setup command runs before the check command, and if it fails or goes over the limit it is cut off and is Couldn't run", async (t) => {
-  const fake = fakeSandbox();
-  const limitMs = 2000;
-  const world = await startWorld({
-    sandbox: fake.sandbox,
-    checkLimits: { checkMs: limitMs, setupMs: limitMs, outputBytes: 10_000 },
-  });
-  t.after(world.stop);
-  const { repo } = world;
-  // Strip the TMPDIR-restore prefix (#146) before looking. That prefix is checked separately in the first test.
-  const commands = () =>
-    fake.calls.splice(0).map((call) => call.command.replace(/^export TMPDIR='[^']*'; /, ""));
+test(
+  "the setup command runs before the check command, and if it fails or goes over the limit it is cut off and is Couldn't run",
+  sandboxOnly,
+  async (t) => {
+    const fake = fakeSandbox();
+    const limitMs = 2000;
+    const world = await startWorld({
+      sandbox: fake.sandbox,
+      checkLimits: { checkMs: limitMs, setupMs: limitMs, outputBytes: 10_000 },
+    });
+    t.after(world.stop);
+    const { repo } = world;
+    // Strip the TMPDIR-restore prefix (#146) before looking. That prefix is checked separately in the first test.
+    const commands = () =>
+      fake.calls.splice(0).map((call) => call.command.replace(/^export TMPDIR='[^']*'; /, ""));
 
-  await merge(repo, {
-    ".omagari.json": config({
-      check: "test -f prepared",
-      setup: "touch prepared",
-    }),
-  });
-  const prepared = await world.cli("runner", "check");
-  assert.equal(prepared.code, 0, prepared.stdout);
-  assert.match(prepared.stdout, /Setup command: touch prepared\nVerdict: Pass/);
-  assert.deepEqual(commands(), ["touch prepared", "test -f prepared"]);
-  // What the setup command made in the temporary worktree doesn't stay in my folder.
-  await assert.rejects(access(join(repo.folder, "prepared")));
+    await merge(repo, {
+      ".omagari.json": config({
+        check: "test -f prepared",
+        setup: "touch prepared",
+      }),
+    });
+    const prepared = await world.cli("runner", "check");
+    assert.equal(prepared.code, 0, prepared.stdout);
+    assert.match(prepared.stdout, /Setup command: touch prepared\nVerdict: Pass/);
+    assert.deepEqual(commands(), ["touch prepared", "test -f prepared"]);
+    // What the setup command made in the temporary worktree doesn't stay in my folder.
+    await assert.rejects(access(join(repo.folder, "prepared")));
 
-  await merge(repo, {
-    ".omagari.json": config({
-      check: "true",
-      setup: "echo setup failed; exit 2",
-    }),
-  });
-  const failed = await world.cli("runner", "check");
-  assert.equal(failed.code, 1);
-  assert.match(
-    failed.stdout,
-    /Verdict: Couldn't run \(.+\)\n {2}The setup command failed \(exit code 2\)\nEnd of output:\n {2}setup failed/,
-  );
-  assert.deepEqual(commands(), ["echo setup failed; exit 2"]);
+    await merge(repo, {
+      ".omagari.json": config({
+        check: "true",
+        setup: "echo setup failed; exit 2",
+      }),
+    });
+    const failed = await world.cli("runner", "check");
+    assert.equal(failed.code, 1);
+    assert.match(
+      failed.stdout,
+      /Verdict: Couldn't run \(.+\)\n {2}The setup command failed \(exit code 2\)\nEnd of output:\n {2}setup failed/,
+    );
+    assert.deepEqual(commands(), ["echo setup failed; exit 2"]);
 
-  // What gets cut is up to what the command started. It doesn't wait out the amount past the limit.
-  await merge(repo, {
-    ".omagari.json": config({ check: "true", setup: "sleep 30 & wait" }),
-  });
-  const slowSetup = await world.cli("runner", "check");
-  assert.match(
-    slowSetup.stdout,
-    /Verdict: Couldn't run \((\d+\.\d)s\)\n {2}The setup command was cut off at the 2 s limit/,
-  );
-  assert.ok(Number(/\((\d+\.\d)s\)/.exec(slowSetup.stdout)?.[1]) < 10);
+    // What gets cut is up to what the command started. It doesn't wait out the amount past the limit.
+    await merge(repo, {
+      ".omagari.json": config({ check: "true", setup: "sleep 30 & wait" }),
+    });
+    const slowSetup = await world.cli("runner", "check");
+    assert.match(
+      slowSetup.stdout,
+      /Verdict: Couldn't run \((\d+\.\d)s\)\n {2}The setup command was cut off at the 2 s limit/,
+    );
+    assert.ok(Number(/\((\d+\.\d)s\)/.exec(slowSetup.stdout)?.[1]) < 10);
 
-  await merge(repo, {
-    ".omagari.json": config({ check: "echo start; sleep 30" }),
-  });
-  const slow = await world.cli("runner", "check");
-  assert.equal(slow.code, 1);
-  assert.match(
-    slow.stdout,
-    /Verdict: Couldn't run \(.+\)\n {2}The check command was cut off at the 2 s limit\. A cut-off run doesn't count as a pass\nEnd of output:\n {2}start/,
-  );
+    await merge(repo, {
+      ".omagari.json": config({ check: "echo start; sleep 30" }),
+    });
+    const slow = await world.cli("runner", "check");
+    assert.equal(slow.code, 1);
+    assert.match(
+      slow.stdout,
+      /Verdict: Couldn't run \(.+\)\n {2}The check command was cut off at the 2 s limit\. A cut-off run doesn't count as a pass\nEnd of output:\n {2}start/,
+    );
 
-  await merge(repo, {
-    ".omagari.json": config({ check: "yes output | head -c 100000; true" }),
-  });
-  const loud = await world.cli("runner", "check");
-  assert.equal(loud.code, 1);
-  assert.match(
-    loud.stdout,
-    /The check command was cut off at the output 10000 bytes limit\. A cut-off run doesn't count as a pass/,
-  );
+    await merge(repo, {
+      ".omagari.json": config({ check: "yes output | head -c 100000; true" }),
+    });
+    const loud = await world.cli("runner", "check");
+    assert.equal(loud.code, 1);
+    assert.match(
+      loud.stdout,
+      /The check command was cut off at the output 10000 bytes limit\. A cut-off run doesn't count as a pass/,
+    );
 
-  const log = (await world.cli("runner", "log")).stdout;
-  assert.match(
-    log,
-    /check command "true" {2}setup command "sleep 30 & wait" {2}folder .+ {2}verdict Couldn't run: The setup command was cut off at the 2 s limit/,
-  );
-});
+    const log = (await world.cli("runner", "log")).stdout;
+    assert.match(
+      log,
+      /check command "true" {2}setup command "sleep 30 & wait" {2}folder .+ {2}verdict Couldn't run: The setup command was cut off at the 2 s limit/,
+    );
+  },
+);
 
 // Start and stop the runner five times with the CLI.
 test("when the runner starts it announces that the check command runs inside the sandbox, and what --merge-check turned off or on stays in that repo", {
+  ...sandboxOnly,
   timeout: 60_000,
 }, async (t) => {
   const world = await startWorld();
@@ -404,60 +413,64 @@ test("even if the check command changes the temporary worktree's Git config and 
   assert.equal(call.policy.filesystem.allowWrite?.length, 3);
 });
 
-test("even if a leftover process after the check, or the check command, swaps the temporary worktree's dependency places for links that point outside, the runner doesn't write or delete outside the sandbox (#150)", async (t) => {
-  const fake = fakeSandbox();
-  const world = await startWorld({ sandbox: fake.sandbox });
-  t.after(world.stop);
-  const { repo } = world;
-  const write = writer(repo.folder);
-  // Outside: an empty folder where the leftover process turns node_modules, and a folder where the check command turns packages/app.
-  const outside = await mkdtemp(join(tmpdir(), "omagari-outside-"));
-  t.after(() => rm(outside, { recursive: true, force: true }));
-  await mkdir(join(outside, "empty"));
-  await mkdir(join(outside, "app/node_modules/keep"), { recursive: true });
-  const done = join(outside, "leftover-done");
-  // The leftover process leaves its process group (detached), waits for the check to end, and then puts a link at the temporary worktree path it was handed.
-  // Like the real sandbox, it writes only inside the path it was handed. When done (even on failure) it leaves a marker (used only for the test to wait on).
-  const leftover = [
-    'W="$PWD"',
-    `for i in $(seq 1 400); do [ -e "$W/node_modules" ] || break; sleep 0.05; done`,
-    `ln -s '${join(outside, "empty")}' "$W/node_modules"; touch '${done}'`,
-  ].join("; ");
-  const spawnLeftover = `require("node:child_process").spawn("sh", ["-c", process.argv[1]], { detached: true, stdio: "ignore" }).unref()`;
-  await merge(repo, {
-    // Without a trailing /, the link is also ignored, so the restore (git clean) doesn't remove it.
-    ".gitignore": "node_modules\n",
-    ".omagari.json": config({ check: "sh check.sh" }),
-    "check.sh": [
-      `[ -e '${done}' ] || '${process.execPath}' -e '${spawnLeftover}' '${leftover}'`,
-      `rm -rf packages/app && ln -s '${join(outside, "app")}' packages/app`,
-      "",
-    ].join("\n"),
-    "packages/app/package.json": "{}\n",
-  });
-  await write("node_modules/dep/index.txt", "installed one");
-  await write("packages/app/node_modules/inner/index.txt", "inner one");
+test(
+  "even if a leftover process after the check, or the check command, swaps the temporary worktree's dependency places for links that point outside, the runner doesn't write or delete outside the sandbox (#150)",
+  sandboxOnly,
+  async (t) => {
+    const fake = fakeSandbox();
+    const world = await startWorld({ sandbox: fake.sandbox });
+    t.after(world.stop);
+    const { repo } = world;
+    const write = writer(repo.folder);
+    // Outside: an empty folder where the leftover process turns node_modules, and a folder where the check command turns packages/app.
+    const outside = await mkdtemp(join(tmpdir(), "omagari-outside-"));
+    t.after(() => rm(outside, { recursive: true, force: true }));
+    await mkdir(join(outside, "empty"));
+    await mkdir(join(outside, "app/node_modules/keep"), { recursive: true });
+    const done = join(outside, "leftover-done");
+    // The leftover process leaves its process group (detached), waits for the check to end, and then puts a link at the temporary worktree path it was handed.
+    // Like the real sandbox, it writes only inside the path it was handed. When done (even on failure) it leaves a marker (used only for the test to wait on).
+    const leftover = [
+      'W="$PWD"',
+      `for i in $(seq 1 400); do [ -e "$W/node_modules" ] || break; sleep 0.05; done`,
+      `ln -s '${join(outside, "empty")}' "$W/node_modules"; touch '${done}'`,
+    ].join("; ");
+    const spawnLeftover = `require("node:child_process").spawn("sh", ["-c", process.argv[1]], { detached: true, stdio: "ignore" }).unref()`;
+    await merge(repo, {
+      // Without a trailing /, the link is also ignored, so the restore (git clean) doesn't remove it.
+      ".gitignore": "node_modules\n",
+      ".omagari.json": config({ check: "sh check.sh" }),
+      "check.sh": [
+        `[ -e '${done}' ] || '${process.execPath}' -e '${spawnLeftover}' '${leftover}'`,
+        `rm -rf packages/app && ln -s '${join(outside, "app")}' packages/app`,
+        "",
+      ].join("\n"),
+      "packages/app/package.json": "{}\n",
+    });
+    await write("node_modules/dep/index.txt", "installed one");
+    await write("packages/app/node_modules/inner/index.txt", "inner one");
 
-  const first = await world.cli("runner", "check");
-  assert.match(first.stdout, /Verdict: Pass/, first.stdout);
-  for (let i = 0; i < 200; i++) {
-    if (
-      await access(done).then(
-        () => true,
-        () => false,
+    const first = await world.cli("runner", "check");
+    assert.match(first.stdout, /Verdict: Pass/, first.stdout);
+    for (let i = 0; i < 200; i++) {
+      if (
+        await access(done).then(
+          () => true,
+          () => false,
+        )
       )
-    )
-      break;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  await access(done);
-  const second = await world.cli("runner", "check");
-  assert.match(second.stdout, /Verdict: Pass/, second.stdout);
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await access(done);
+    const second = await world.cli("runner", "check");
+    assert.match(second.stdout, /Verdict: Pass/, second.stdout);
 
-  // The leftover process didn't link dependencies outside by following the link it turned, and didn't delete the outside node_modules by following the packages/app link.
-  assert.deepEqual(await readdir(join(outside, "app/node_modules")), ["keep"]);
-  assert.deepEqual(await readdir(join(outside, "empty")), []);
-});
+    // The leftover process didn't link dependencies outside by following the link it turned, and didn't delete the outside node_modules by following the packages/app link.
+    assert.deepEqual(await readdir(join(outside, "app/node_modules")), ["keep"]);
+    assert.deepEqual(await readdir(join(outside, "empty")), []);
+  },
+);
 
 const WSL_MOUNTS = [
   "/dev/sdc / ext4 rw 0 0",
@@ -505,31 +518,35 @@ test("on plain Windows with the switch off, the reason for Couldn't run names WS
   }
 });
 
-test("when a solo run on Linux looks broken by the Unix socket block, a reason is added; when it broke regardless of sockets or the machine doesn't block sockets, it isn't added", async (t) => {
-  const fake = fakeSandbox();
-  fake.blocksUnixSockets = true;
-  const world = await startWorld({ sandbox: fake.sandbox });
-  t.after(world.stop);
-  const { repo } = world;
-  const socketFail = "echo 'Error: listen EPERM: operation not permitted /tmp/a.sock'; exit 1";
+test(
+  "when a solo run on Linux looks broken by the Unix socket block, a reason is added; when it broke regardless of sockets or the machine doesn't block sockets, it isn't added",
+  notOnWindows("Linux only: the sandbox blocks Unix sockets there"),
+  async (t) => {
+    const fake = fakeSandbox();
+    fake.blocksUnixSockets = true;
+    const world = await startWorld({ sandbox: fake.sandbox });
+    t.after(world.stop);
+    const { repo } = world;
+    const socketFail = "echo 'Error: listen EPERM: operation not permitted /tmp/a.sock'; exit 1";
 
-  await merge(repo, { ".omagari.json": config({ check: socketFail }) });
-  const blocked = await world.cli("runner", "check");
-  assert.match(
-    blocked.stdout,
-    /Verdict: Broken \(\d+\.\ds\)\n {2}On this machine \(Linux\) the sandbox blocks Unix sockets/,
-  );
+    await merge(repo, { ".omagari.json": config({ check: socketFail }) });
+    const blocked = await world.cli("runner", "check");
+    assert.match(
+      blocked.stdout,
+      /Verdict: Broken \(\d+\.\ds\)\n {2}On this machine \(Linux\) the sandbox blocks Unix sockets/,
+    );
 
-  await merge(repo, {
-    ".omagari.json": config({ check: "echo assertion failed; exit 1" }),
-  });
-  assert.doesNotMatch((await world.cli("runner", "check")).stdout, /Unix sockets/);
+    await merge(repo, {
+      ".omagari.json": config({ check: "echo assertion failed; exit 1" }),
+    });
+    assert.doesNotMatch((await world.cli("runner", "check")).stdout, /Unix sockets/);
 
-  // On a machine that doesn't block sockets (macOS), it isn't added even for the same output.
-  await merge(repo, { ".omagari.json": config({ check: socketFail }) });
-  fake.blocksUnixSockets = false;
-  assert.doesNotMatch((await world.cli("runner", "check")).stdout, /blocks Unix sockets/);
-});
+    // On a machine that doesn't block sockets (macOS), it isn't added even for the same output.
+    await merge(repo, { ".omagari.json": config({ check: socketFail }) });
+    fake.blocksUnixSockets = false;
+    assert.doesNotMatch((await world.cli("runner", "check")).stdout, /blocks Unix sockets/);
+  },
+);
 
 test("when the warning that the seccomp helper is missing appears, the machine can't use the sandbox, and other warnings don't block it", () => {
   const seccomp = "seccomp not available - unix socket access not restricted";

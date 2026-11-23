@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type Alert, api, call } from "@omagari/contract";
 import type { Sandbox } from "@omagari/runner";
-import { eventually, fakeSandbox, place, startWorld, writer } from "./harness.ts";
+import { eventually, fakeSandbox, place, sandboxOnly, startWorld, writer } from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
 type As = { url: string; session: string };
@@ -149,6 +149,7 @@ async function receives(world: World, cwd: string, prefix: string) {
 }
 
 test("when a pair with a guessed indirect conflict settles, the user's runner merges the two works and runs the check command, and the verdict is attached to the alert and both mailboxes", {
+  ...sandboxOnly,
   timeout: 150_000,
 }, async (t) => {
   const fake = fakeSandbox();
@@ -315,6 +316,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo "pay
 });
 
 test("with no check command, no usable sandbox, or lines that collide, it says not run with the reason; missing files are left out and noted; and below the full share level the output isn't uploaded", {
+  ...sandboxOnly,
   timeout: 150_000,
 }, async (t) => {
   const fake = fakeSandbox();

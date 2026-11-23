@@ -16,7 +16,15 @@ import {
 } from "@omagari/contract";
 import { startRunner } from "@omagari/runner";
 import { WebSocket } from "ws";
-import { eventually, fakeExecutor, REPO, startWorld, stubbed, tempRepo } from "./harness.ts";
+import {
+  eventually,
+  fakeExecutor,
+  gitPath,
+  REPO,
+  startWorld,
+  stubbed,
+  tempRepo,
+} from "./harness.ts";
 
 test("an account with push access becomes a member on login without an invite", async (t) => {
   const world = await startWorld();
@@ -142,7 +150,11 @@ test("one command in the repo folder logs in and starts the runner. No GitHub to
   t.after(() => runner.stop("SIGKILL"));
   const [, code] = await runner.output(/enter code (\S+)/);
   world.github.approve(code, "alice"); // a person entered the code in the browser
-  await runner.output(new RegExp(`Runner started: alice's agent, ${REPO} ↔ ${desk.folder}`));
+  await runner.output(
+    new RegExp(
+      `Runner started: alice's agent, ${REPO} ↔ ${gitPath(desk.folder).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}`,
+    ),
+  );
   assert.equal((await world.agents(world.owner)).alice, "online");
 
   // If it stops, it is offline.

@@ -44,7 +44,12 @@ test("the background runner starts the runner of a workspace repo once a session
   await assert.rejects(callRunner(outside.folder, "situation", { executor: "claude-code" }));
 
   // After a restart it comes back without waiting for a session.
-  assert.equal((await background.stop("SIGTERM")).code, 0);
+  // Windows has no SIGTERM between processes, so there it's asked over its pipe (ADR-0060).
+  const stopped =
+    process.platform === "win32"
+      ? await world.cli("runner", "stop").then(() => background.exited)
+      : await background.stop("SIGTERM");
+  assert.equal(stopped.code, 0);
   await eventually(async () =>
     assert.equal((await world.agents(world.owner))[world.owner.login], "offline"),
   );

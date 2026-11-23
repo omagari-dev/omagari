@@ -18,7 +18,15 @@ import {
 } from "@omagari/contract";
 import { startRunner } from "@omagari/runner";
 import { type WebSocket as ServerSocket, WebSocketServer } from "ws";
-import { eventually, fakeExecutor, REPO, startWorld, stubbed, tempRepo } from "./harness.ts";
+import {
+  eventually,
+  fakeExecutor,
+  gitPath,
+  REPO,
+  startWorld,
+  stubbed,
+  tempRepo,
+} from "./harness.ts";
 
 const frame = (fields: object) => JSON.stringify({ v: CONTRACT_VERSION, payload: {}, ...fields });
 const tooBigFrame = "x".repeat(MAX_FRAME_BYTES + 1);
@@ -320,7 +328,7 @@ test("the runner takes only Q&A. It doesn't run a request not in the contract, a
       {
         message: "read only",
         tools: ["Read", "Grep", "Glob"],
-        folder: server.runner.folder,
+        folder: gitPath(server.runner.folder),
       },
     ],
   );

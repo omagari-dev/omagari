@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeExecutor, startWorld } from "./harness.ts";
+import { fakeExecutor, gitPath, startWorld } from "./harness.ts";
 
 test("asking from the terminal gets an answer from the runner session, and the next question continues in the same session", async (t) => {
   const fake = fakeExecutor((input) => `Answer: ${input.message}`);
@@ -24,7 +24,7 @@ test("asking from the terminal gets an answer from the runner session, and the n
   for (const call of fake.calls) {
     // Read-only: no tool writes files or runs commands.
     assert.deepEqual(call.tools, ["Read", "Grep", "Glob"]);
-    assert.equal(call.folder, world.repo.folder);
+    assert.equal(call.folder, gitPath(world.repo.folder));
   }
 });
 
