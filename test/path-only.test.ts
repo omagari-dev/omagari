@@ -14,7 +14,10 @@ async function folders() {
   const repo = join(root, "repo");
   await mkdir(bin);
   await mkdir(repo);
-  const env = { ...process.env, PATH: `.;${bin};${process.env.PATH}` };
+  // Windows calls the variable `Path`; keep one key so the lookup can't see two.
+  const env = { ...process.env };
+  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+  env[key] = `.;${bin};${env[key]}`;
   return { root, bin, repo, env };
 }
 
