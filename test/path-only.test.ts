@@ -26,7 +26,7 @@ test("a program is found on PATH, not in the current folder", windows, async () 
   try {
     await writeFile(join(bin, "tool.cmd"), "@echo path\r\n");
     await writeFile(join(repo, "tool.cmd"), "@echo repo\r\n");
-    assert.equal(onPath("tool", env), join(bin, "tool.cmd"));
+    assert.equal(onPath("tool", env).toLowerCase(), join(bin, "tool.cmd").toLowerCase());
     const run = await execShim("tool", [], { cwd: repo, env });
     assert.equal(run.stdout.trim(), "path");
   } finally {
