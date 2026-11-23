@@ -120,6 +120,8 @@ const OBSERVED = new Set(["observation", "conflicts", "checkCommand", "merged", 
 const MAX_HELLO_BYTES = 64 * 1024;
 /** Max number of connections that haven't finished hello. */
 const MAX_UNGREETED = 200;
+/** How many live web connections one login can hold at once. */
+const MAX_LIVE_PER_LOGIN = 20;
 /** How often each work's draft PR title and merge state are reread from GitHub. Long-offline members are also removed on this round. */
 const FOLLOW_MS = 60_000;
 /** How long an offline member's observations and status line are kept. Room's 7 days (stage 1 Q A10). */
@@ -5425,6 +5427,13 @@ export async function startServer(options: {
             id,
           );
         }
+        // One hello per connection, and a bounded number of connections per login.
+        if (watchers.has(socket))
+          return refuse(socket, { code: "invalid_request", message: "Already greeted" }, id);
+        let held = 0;
+        for (const w of watchers.values()) if (w.login === login) held++;
+        if (held >= MAX_LIVE_PER_LOGIN)
+          return refuse(socket, { code: "limited", message: "Too many open windows" }, id);
         const mine = reposOf(login);
         const space = payload.workspace?.toLowerCase();
         if (space !== undefined && !mine.some((r) => ownerOf(r) === space)) {
@@ -5451,24 +5460,30 @@ export async function startServer(options: {
         }
         const workspace = ownerOf(repo);
         // The last message number of this workspace. Other workspaces' numbers don't leak.
-        const { seq } = db
-          .prepare(
-            `SELECT COALESCE(MAX(m.id), 0) AS seq FROM messages m LEFT JOIN alerts a ON a.id = m.alert
+        // Someone in no workspace has nothing to read, so skip the scan.
+        const { seq } = (
+          repo === ""
+            ? { seq: 0 }
+            : db
+                .prepare(
+                  `SELECT COALESCE(MAX(m.id), 0) AS seq FROM messages m LEFT JOIN alerts a ON a.id = m.alert
              WHERE COALESCE(${ownerSql("a.repo")}, (SELECT ch.workspace FROM channels ch WHERE ch.id = m.channel)) = ?`,
-          )
-          .get(workspace) as {
+                )
+                .get(workspace)
+        ) as {
           seq: number;
         };
         socket.send(encode(serverToWeb, "welcome", { seq }, id));
-        if (payload.after !== undefined) {
+        if (payload.after !== undefined && repo !== "") {
           // Also resend public Q&A that was answered while disconnected. Disconnect came after `after`, so cover generously if the answer came after that message stood.
           // Also resend alerts edited while disconnected, and alerts whose post's article count changed while disconnected.
           const missed = db
             .prepare(
-              `${MESSAGES} WHERE m.id > ? OR q.settled >= (SELECT at FROM messages WHERE id = ?)
+              `${MESSAGES} WHERE (m.id > ? OR q.settled >= (SELECT at FROM messages WHERE id = ?)
                OR a.updated >= (SELECT at FROM messages WHERE id = ?) OR m.reacted >= (SELECT at FROM messages WHERE id = ?)
                OR (c.id IS NOT NULL AND EXISTS (SELECT 1 FROM messages WHERE channel = c.id AND id > ?))
-               OR EXISTS (SELECT 1 FROM messages t WHERE t.thread_of = m.id AND t.id > ?)
+               OR EXISTS (SELECT 1 FROM messages t WHERE t.thread_of = m.id AND t.id > ?))
+               AND COALESCE(${ownerSql("a.repo")}, (SELECT ch.workspace FROM channels ch WHERE ch.id = m.channel)) = ?
                ORDER BY m.id`,
             )
             .all(
@@ -5478,6 +5493,7 @@ export async function startServer(options: {
               payload.after,
               payload.after,
               payload.after,
+              workspace,
             ) as MessageRow[];
           for (const row of missed)
             if (row.workspace === workspace && (row.repo === null || sees(login, row.repo)))

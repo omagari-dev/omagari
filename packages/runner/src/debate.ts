@@ -13,6 +13,7 @@ import {
   VERDICT_LABELS,
   type WorkView,
 } from "@omagari/contract";
+import { onPath } from "@omagari/contract/shim";
 
 const execFileAsync = promisify(execFile);
 
@@ -134,7 +135,7 @@ export async function markEvidence(tree: string, texts: string[]): Promise<Evide
   const mark = async (text: string): Promise<Evidence["mark"]> => {
     const ref = text.trim().split(/\s+/)[0] ?? "";
     if (COMMIT.test(ref)) {
-      return execFileAsync("git", ["-C", tree, "cat-file", "-e", `${ref}^{commit}`]).then(
+      return execFileAsync(onPath("git"), ["-C", tree, "cat-file", "-e", `${ref}^{commit}`]).then(
         () => "verified",
         () => "missing",
       );
@@ -164,7 +165,7 @@ export async function markEvidence(tree: string, texts: string[]): Promise<Evide
  */
 export async function contextless(tree: string, base: string | undefined, plan?: string) {
   const diff = base
-    ? await execFileAsync("git", ["-C", tree, "diff", base], {
+    ? await execFileAsync(onPath("git"), ["-C", tree, "diff", base], {
         maxBuffer: 64 * 1024 * 1024,
       }).then(
         ({ stdout }) => stdout,

@@ -1,7 +1,7 @@
 // Fetches the installed clone when the server's contract is newer and rejected us (ADR-0042). Never touches the watched repo folder.
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { execShim } from "@omagari/contract/shim";
+import { execShim, onPath } from "@omagari/contract/shim";
 import { checkoutBranch, checkoutRoot, installedPackage } from "@omagari/contract/version";
 
 /** Marker passed to the runner restarted from the fetched clone. Stops it from fetching the same version again. */
@@ -66,17 +66,17 @@ export async function updateClone(): Promise<Updated> {
   const fail = (what: string, error: unknown) => ({
     todo: `${what} (${root}): ${error instanceof Error ? error.message : error}`,
   });
-  if (await run("git", "status", "--porcelain", "--untracked-files=no").catch(() => "?"))
+  if (await run(onPath("git"), "status", "--porcelain", "--untracked-files=no").catch(() => "?"))
     return {
       todo: `${root} has modified files. Clean them up, run \`git pull\` and \`npm ci\`, then restart the runner`,
     };
-  const from = await run("git", "rev-parse", "HEAD");
+  const from = await run(onPath("git"), "rev-parse", "HEAD");
   try {
-    await run("git", "pull", "--ff-only");
+    await run(onPath("git"), "pull", "--ff-only");
   } catch (error) {
     return fail("`git pull --ff-only` failed. Update it yourself", error);
   }
-  const to = await run("git", "rev-parse", "HEAD");
+  const to = await run(onPath("git"), "rev-parse", "HEAD");
   if (to === from)
     return {
       todo: `${branch} has no new commits to fetch. Check which version the server runs`,

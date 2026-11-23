@@ -25,7 +25,7 @@ import {
   shareLevelsText,
   VERDICT_LABELS,
 } from "@omagari/contract";
-import { execShim } from "@omagari/contract/shim";
+import { execShim, onPath } from "@omagari/contract/shim";
 import { checkoutVersion, installedPackage } from "@omagari/contract/version";
 import {
   acceptedRemotes,
@@ -51,7 +51,7 @@ import {
 import { background } from "./background.ts";
 import { install, uninstall } from "./install.ts";
 import { register, unregister } from "./service.ts";
-import { chooseMergeDefault, confirmUnsandboxed } from "./unsandboxed.ts";
+import { chooseMergeDefault, confirmUnsandboxed, mergeCheckFor, registry } from "./unsandboxed.ts";
 import { restart, UPDATED, type UpdateRecord, update, updateNpm } from "./update.ts";
 
 /** First line of commands that show other people's text in quotes (status, impact). Same meaning as the hooks' notice. */
@@ -131,8 +131,6 @@ const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
 const sessionsFile = join(configDir, "sessions.json");
 /** The address `omagari setup` saved. */
 const configFile = join(configDir, "config.json");
-/** This machine's default for merge runs (`off` or `unsandboxed`), for repos with no choice of their own. Only `omagari setup` writes it. */
-const mergeDefaultFile = join(configDir, "merge-check");
 /** Where `setup` points when there's no address. The env var is for tests, which must not reach the hosted server. */
 const DEFAULT_SERVER = process.env.OMAGARI_DEFAULT_SERVER ?? "https://app.omagari.org";
 const savedServer: string | undefined = JSON.parse(
@@ -220,7 +218,12 @@ if (!(command === "runner" && (sub === undefined || sub.startsWith("--") || sub 
  * Appends nothing if you're outside a repo, not on a branch, the runner is off, or nothing is backed up.
  */
 async function mailbox() {
-  const branch = await promisify(execFile)("git", ["symbolic-ref", "--quiet", "--short", "HEAD"])
+  const branch = await promisify(execFile)(onPath("git"), [
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    "HEAD",
+  ])
     .then(({ stdout }) => stdout.trim())
     .catch(() => undefined);
   if (!branch) return;
@@ -239,7 +242,7 @@ async function setup(address: string | undefined, mergeCheck: string | undefined
   const chosen = address ?? process.env.OMAGARI_SERVER ?? savedServer ?? DEFAULT_SERVER;
   server = chosen.replace(/\/+$/, "");
   // Asked before signing in, so a refusal (an agent, a wrong value) stops before anything else changes.
-  if (mergeCheck !== undefined) await chooseMergeDefault(mergeDefaultFile, mergeCheck);
+  if (mergeCheck !== undefined) await chooseMergeDefault(registry(), mergeCheck);
   const saved = (await readSessions())[server];
   // A saved session can end on the server (logged out, or GitHub sign-in expired, ADR-0053). Then sign in again.
   const ended =
@@ -253,7 +256,7 @@ async function setup(address: string | undefined, mergeCheck: string | undefined
   await writeFile(configFile, `${JSON.stringify({ server }, null, 2)}\n`);
   for (const line of await install()) console.log(line);
   console.log(await register());
-  if (mergeCheck === undefined) await chooseMergeDefault(mergeDefaultFile, undefined);
+  if (mergeCheck === undefined) await chooseMergeDefault(registry(), undefined);
   console.log(
     `\nServer: ${server}\nOne step is left: Open /hooks in Codex and trust the two Omagari hooks (Codex has no way to trust them in advance).`,
   );
@@ -301,14 +304,8 @@ async function login() {
   }
 }
 
-/** The machine's default from setup. Only `unsandboxed` changes anything; a hand-edited file with anything else is ignored. */
-async function machineMergeDefault() {
-  const saved = (await readFile(mergeDefaultFile, "utf8").catch(() => "")).trim();
-  return saved === "unsandboxed" && process.platform === "win32" ? saved : undefined;
-}
-
 /**
- * The owner's choices kept for this repo (share level, merge runs). If you choose, it's saved in `file` for the repo (linked worktrees included);
+ * The owner's choice kept for this repo (share level; merge runs are kept by `mergeCheckFor`). If you choose, it's saved in `file` for the repo (linked worktrees included);
  * if you don't, the saved one is used; if nothing is saved, the first of `values` (the default) is used. `name` is the name used when reporting a wrong value (with its particle).
  * If we didn't keep it, an owner who lowered the share level or turned off merge runs would silently go back to the default when they just start it again.
  */
@@ -317,15 +314,13 @@ async function remembered<T extends string>(
   chosen: string | undefined,
   name: string,
   values: readonly T[],
-  /** What a repo with nothing saved starts with, instead of the first of `values`. */
-  fallback?: string,
 ) {
   const value =
     chosen ??
     (await readFile(file, "utf8").then(
       (saved) => saved.trim(),
       (error) => {
-        if (error.code === "ENOENT") return fallback ?? values[0];
+        if (error.code === "ENOENT") return values[0];
         throw error; // couldn't read what was saved, so don't fall back to the default
       },
     ));
@@ -429,12 +424,11 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
     !(await confirmUnsandboxed("omagari runner --merge-check unsandboxed"))
   )
     throw new Error("Merge runs without a sandbox weren't turned on");
-  const mergeCheck = await remembered(
+  if (chosenMergeCheck !== undefined && !MERGE_CHECKS.some((v) => v === chosenMergeCheck))
+    throw new Error(`Merge run must be one of ${MERGE_CHECKS.join(", ")}: ${chosenMergeCheck}`);
+  const mergeCheck = await mergeCheckFor(
     paths.mergeCheck,
-    chosenMergeCheck,
-    "Merge run",
-    MERGE_CHECKS,
-    await machineMergeDefault(),
+    chosenMergeCheck as (typeof MERGE_CHECKS)[number] | undefined,
   );
   // Before logging in and connecting, so before anything is sent, say what will be sent.
   console.log(observationNotice(share));
@@ -482,13 +476,7 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
 async function startIn(folder: string) {
   const paths = await runnerPaths(folder);
   const share = await remembered(paths.share, undefined, "Share level", ShareLevel.options);
-  const mergeCheck = await remembered(
-    paths.mergeCheck,
-    undefined,
-    "Merge run",
-    MERGE_CHECKS,
-    await machineMergeDefault(),
-  );
+  const mergeCheck = await mergeCheckFor(paths.mergeCheck, undefined);
   const session = (await readSessions())[server];
   if (!session) throw new Error(`Not signed in to ${server}. Run omagari setup`);
   // Starting by itself isn't a yes to share the repo (ADR-0049).
@@ -544,7 +532,7 @@ function seconds(ms: number) {
  */
 async function check() {
   const folder = (
-    await promisify(execFile)("git", ["rev-parse", "--show-toplevel"]).catch(() => {
+    await promisify(execFile)(onPath("git"), ["rev-parse", "--show-toplevel"]).catch(() => {
       throw new Error("This folder is not a Git repo. Use it in a work folder");
     })
   ).stdout.trim();
@@ -703,7 +691,12 @@ async function status() {
  * Codex doesn't document any variable it puts in the shell, so we don't send one. Codex Work is identified only by hooks.
  */
 async function setStatus(text: string) {
-  const branch = await promisify(execFile)("git", ["symbolic-ref", "--quiet", "--short", "HEAD"])
+  const branch = await promisify(execFile)(onPath("git"), [
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    "HEAD",
+  ])
     .then(({ stdout }) => stdout.trim())
     .catch(() => {
       throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
@@ -732,7 +725,7 @@ async function target(path: string | undefined) {
     },
   });
   const git = (...args: string[]) =>
-    promisify(execFile)("git", args).then(({ stdout }) => stdout.trim());
+    promisify(execFile)(onPath("git"), args).then(({ stdout }) => stdout.trim());
   const branch = await git("symbolic-ref", "--quiet", "--short", "HEAD").catch(() => {
     throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
   });
@@ -888,7 +881,7 @@ async function metrics(days: string | undefined) {
 
 /** The branch checked out in this folder. Throws if it isn't a branch. */
 async function currentBranch() {
-  return promisify(execFile)("git", ["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
+  return promisify(execFile)(onPath("git"), ["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
     ({ stdout }) => stdout.trim(),
     () => {
       throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
@@ -991,7 +984,9 @@ async function wait() {
   if (values.path === undefined && !Number.isInteger(id))
     throw new Error(`Not a question number: ${positionals[0]}`);
   const branch = await currentBranch();
-  const top = (await promisify(execFile)("git", ["rev-parse", "--show-toplevel"])).stdout.trim();
+  const top = (
+    await promisify(execFile)(onPath("git"), ["rev-parse", "--show-toplevel"])
+  ).stdout.trim();
   const path =
     values.path === undefined
       ? undefined

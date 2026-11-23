@@ -3,7 +3,7 @@ import { access, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink } from
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { dependencyProblem, NO_SECCOMP } from "@omagari/runner";
+import { callRunner, dependencyProblem, NO_SECCOMP } from "@omagari/runner";
 import { CHECK_LIMITS, checkWork, osSandbox } from "../packages/runner/src/check.ts";
 import { fakeSandbox, notOnWindows, sandboxOnly, startWorld, tempRepo, writer } from "./harness.ts";
 
@@ -587,4 +587,20 @@ test("the .env and .env.* that observation always leaves out are not put into th
   assert.match(checked.stdout, /Verdict: Pass/);
   // Files in my folder are unchanged.
   assert.equal(await readFile(join(repo.folder, ".env"), "utf8"), "KEY=DUMMY-SECRET\n");
+});
+
+test("the runner's local check refuses a folder from another repo, and a folder that isn't a repo", async (t) => {
+  const fake = fakeSandbox();
+  const world = await startWorld({ sandbox: fake.sandbox });
+  t.after(world.stop);
+  const other = await tempRepo();
+  t.after(other.remove);
+  await merge(other, { ".omagari.json": config({ check: "true" }) });
+  const plain = await mkdtemp(join(tmpdir(), "omagari-plain-"));
+  t.after(() => rm(plain, { recursive: true, force: true }));
+
+  for (const folder of [other.folder, plain]) {
+    await assert.rejects(callRunner(world.repo.folder, "check", { folder }), /only its own repo/);
+  }
+  assert.equal(fake.calls.length, 0);
 });
