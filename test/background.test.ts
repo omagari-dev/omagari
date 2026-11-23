@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { callRunner } from "@omagari/runner";
@@ -80,4 +81,45 @@ test("omagari runner stop closes the background runner's runners and ends it, wi
     assert.equal((await world.agents(world.owner))[world.owner.login], "offline"),
   );
   assert.match((await world.cli("runner", "stop")).stderr, /The background runner is off/);
+});
+
+test("the background runner moves to another folder of the repo when the worktree it started in is removed", async (t) => {
+  process.env.OMAGARI_BACKGROUND_RETRY_MS = "500";
+  t.after(() => {
+    delete process.env.OMAGARI_BACKGROUND_RETRY_MS;
+  });
+  const world = await startWorld();
+  t.after(world.stop);
+  await world.runner.stop();
+  await world.signInCli(world.owner);
+  const background = world.launchCliIn(world.repo.folder, "runner", "background");
+  t.after(() => background.stop("SIGTERM"));
+  await background.output(/Background runner on/);
+
+  // A session opened the repo in a worktree first, and a second worktree exists.
+  const first = await world.worktree("first");
+  await world.worktree("second");
+  assert.equal((await world.hook(sessionStart(first), { cwd: first })).code, 0);
+  await background.output(/Watching .*first/);
+  await eventually(async () =>
+    assert.equal((await world.agents(world.owner))[world.owner.login], "online"),
+  );
+
+  // The hub removes the first worktree after its PR merged.
+  // On Windows a process holding the folder open (the runner's own git) can make this fail for a moment.
+  await eventually(() => world.repo.git("worktree", "remove", "--force", first));
+  await background.output(/is gone\. Watching .+ instead/);
+  await eventually(async () =>
+    assert.equal((await world.agents(world.owner))[world.owner.login], "online"),
+  );
+
+  // Work in worktrees of the same repo is still observed, new ones too, and the removed one is gone.
+  await world.worktree("third");
+  await eventually(async () => {
+    const branches = (await world.works(world.owner)).map((w) => w.branch);
+    assert.ok(branches.includes("second") && branches.includes("third"));
+    assert.ok(!branches.includes("first"));
+  });
+  const folders = JSON.parse(await readFile(join(world.config, "omagari", "folders.json"), "utf8"));
+  assert.ok(!folders.includes(first));
 });
