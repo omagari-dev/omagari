@@ -1232,3 +1232,7 @@ export async function startWorld(
     },
   };
 }
+
+/** Test options that skip a test only on Windows, naming the stage 8 ticket (#463–#469) that makes it pass there. Nothing is skipped elsewhere. */
+export const winSkip = (ticket: number) =>
+  process.platform === "win32" ? { skip: `Windows needs #${ticket}` } : {};

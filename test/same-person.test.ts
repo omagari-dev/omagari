@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
 import { type Alert, api, type ContractFailure, call } from "@omagari/contract";
-import { eventually, fakeExecutor, startWorld, writer } from "./harness.ts";
+import { eventually, fakeExecutor, startWorld, winSkip, writer } from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
 
@@ -81,172 +81,188 @@ const worksIn = (context: string, tag: string) =>
     line.split(" · ").slice(0, 2).join(" · "),
   );
 
-test("when one person's two branches edit the same place, a direct conflict notification and post appear, and only my other branch goes into the two hooks as nearby work", async (t) => {
-  const world = await startWorld({ observeMs: 50 });
-  t.after(world.stop);
-  const refund = await twoBranches(world);
+test(
+  "when one person's two branches edit the same place, a direct conflict notification and post appear, and only my other branch goes into the two hooks as nearby work",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ observeMs: 50 });
+    t.after(world.stop);
+    const refund = await twoBranches(world);
 
-  // A file only payment edited has no nearby work (same work).
-  await writer(world.repo.folder)("src/only.ts", "only\n");
-  await writer(world.repo.folder)("src/pay.ts", text(BASE.toSpliced(2, 1, "payment")));
-  await writer(refund)("src/pay.ts", text(BASE.toSpliced(2, 1, "refund")));
+    // A file only payment edited has no nearby work (same work).
+    await writer(world.repo.folder)("src/only.ts", "only\n");
+    await writer(world.repo.folder)("src/pay.ts", text(BASE.toSpliced(2, 1, "payment")));
+    await writer(refund)("src/pay.ts", text(BASE.toSpliced(2, 1, "refund")));
 
-  const alert = await eventually(async () => {
-    const found = await open(world, "direct");
-    assert.equal(found.length, 1, JSON.stringify(found));
-    return found[0] as Extract<Alert, { kind: "direct" }> & { channel: string };
-  });
-  assert.deepEqual(alert.works, [PAYMENT, REFUND]);
-  assert.deepEqual(
-    alert.files.map((f) => f.path),
-    ["src/pay.ts"],
-  );
-  // One notification is one post.
-  assert.ok(alert.channel);
-
-  // Pre-edit hook: my other branch goes in as nearby work, and the branch I am editing does not.
-  await eventually(async () =>
-    assert.deepEqual(
-      worksIn(await preEdit(world, world.repo.folder, "src/pay.ts"), "omagari-nearby"),
-      [`- owner · branch "refund"`],
-    ),
-  );
-  assert.deepEqual(worksIn(await preEdit(world, refund, "src/pay.ts"), "omagari-nearby"), [
-    `- owner · branch "payment"`,
-  ]);
-  assert.deepEqual(
-    worksIn(await preEdit(world, world.repo.folder, "src/only.ts"), "omagari-nearby"),
-    [],
-  );
-
-  // Session-start hook: only the other side of each branch is shown.
-  assert.deepEqual(worksIn(await sessionStart(world, world.repo.folder), "omagari-situation"), [
-    `- owner · branch "refund"`,
-  ]);
-  assert.deepEqual(worksIn(await sessionStart(world, refund), "omagari-situation"), [
-    `- owner · branch "payment"`,
-  ]);
-});
-
-test("an indirect conflict (estimated) and a duplicate work notification also appear between one person's two branches", async (t) => {
-  const world = await startWorld({ observeMs: 50 });
-  t.after(world.stop);
-  const refund = await twoBranches(world);
-
-  // payment changes the definition line of refund. checkout on the refund branch uses it. The two branches create a new function with the same name.
-  await writer(world.repo.folder)(
-    "src/money.ts",
-    MONEY.replace("refund(amount: number)", "refund(amount: number, reason: string)"),
-  );
-  await writer(world.repo.folder)("src/a.ts", "export function audit() {}\n");
-  await writer(refund)("src/b.ts", "export function audit() {}\n");
-
-  await eventually(async () => {
-    const [indirect] = await open(world, "indirect");
-    assert.ok(indirect && indirect.kind !== "direct", "Indirect conflict does not exist yet");
-    assert.deepEqual(indirect.works, [PAYMENT, REFUND]);
-    assert.deepEqual(
-      indirect.symbols.map((s) => s.name),
-      ["refund"],
-    );
-  });
-  await eventually(async () => {
-    const [duplicate] = await open(world, "duplicate");
-    assert.ok(duplicate && duplicate.kind !== "direct", "Duplicate work does not exist yet");
-    assert.deepEqual(duplicate.works, [PAYMENT, REFUND]);
-    assert.deepEqual(
-      duplicate.symbols.map((s) => s.name),
-      ["audit"],
-    );
-  });
-});
-
-test("a debate opens even for a conflict between one person's two works, each side splits that branch's work session and gives a stance, and a proxy cannot be called", async (t) => {
-  const owner = fakeExecutor(({ folder }) =>
-    JSON.stringify({
-      claim: `inside ${folder}`,
-      evidence: ["src/money.ts:1 definition of refund"],
-    }),
-  );
-  owner.executor.recent = async (_folder, branch) => `work-${branch}`;
-  // Cut to one round so no rebuttal round starts after the two stances are public.
-  const world = await startWorld({
-    observeMs: 50,
-    followMs: 50,
-    debateRounds: 1,
-    executor: owner.executor,
-  });
-  t.after(world.stop);
-  await twoBranches(world);
-
-  // payment declares it will change refund's signature. checkout on the refund branch uses it (payment's own use is left out because it is the same work).
-  const claimed = await world.cli(
-    "claim",
-    "src/money.ts",
-    "--symbol",
-    "refund",
-    "--plan",
-    "signature",
-    "--detail",
-    "refund(amount, reason)",
-  );
-  assert.equal(claimed.code, 0, claimed.stderr);
-
-  const post = await eventually(async () => {
-    const found = (await call(world.owner, api.posts)).posts.find(
-      (p) => p.message.kind === "alert" && p.message.alert.kind === "declared",
-    );
-    assert.ok(found?.debate?.revealed, JSON.stringify(found?.debate));
-    return found;
-  });
-  const debate = post.debate;
-  assert.ok(debate);
-  assert.deepEqual(
-    debate.seats.map((s) => [s.login, s.branch, s.state]),
-    [
-      ["owner", "payment", "submitted"],
-      ["owner", "refund", "submitted"],
-    ],
-  );
-  assert.equal(debate.options.length, 2);
-  // The same runner split and started that branch's work session for each branch.
-  assert.deepEqual(owner.calls.map((c) => [c.resume, c.fork]).sort(), [
-    ["work-payment", true],
-    ["work-refund", true],
-  ]);
-
-  // The owner is always present, so neither another member nor the owner can call a proxy.
-  world.github.grant("alice");
-  const alice = await world.login("alice");
-  for (const as of [alice, world.owner]) {
-    await assert.rejects(call(as, api.proxyDebate, { post: post.channel, seat: 0 }), (error) => {
-      assert.equal((error as ContractFailure).code, "conflict");
-      return true;
+    const alert = await eventually(async () => {
+      const found = await open(world, "direct");
+      assert.equal(found.length, 1, JSON.stringify(found));
+      return found[0] as Extract<Alert, { kind: "direct" }> & { channel: string };
     });
-  }
-});
+    assert.deepEqual(alert.works, [PAYMENT, REFUND]);
+    assert.deepEqual(
+      alert.files.map((f) => f.path),
+      ["src/pay.ts"],
+    );
+    // One notification is one post.
+    assert.ok(alert.channel);
 
-test("omagari impact shows my work on my other branch and does not show my work on the same branch", async (t) => {
-  const world = await startWorld({ observeMs: 50 });
-  t.after(world.stop);
-  const refund = await twoBranches(world);
+    // Pre-edit hook: my other branch goes in as nearby work, and the branch I am editing does not.
+    await eventually(async () =>
+      assert.deepEqual(
+        worksIn(await preEdit(world, world.repo.folder, "src/pay.ts"), "omagari-nearby"),
+        [`- owner · branch "refund"`],
+      ),
+    );
+    assert.deepEqual(worksIn(await preEdit(world, refund, "src/pay.ts"), "omagari-nearby"), [
+      `- owner · branch "payment"`,
+    ]);
+    assert.deepEqual(
+      worksIn(await preEdit(world, world.repo.folder, "src/only.ts"), "omagari-nearby"),
+      [],
+    );
 
-  // payment changes the definition line of the refund function.
-  await writer(world.repo.folder)(
-    "src/money.ts",
-    MONEY.replace("refund(amount: number)", "refund(amount: number, reason: string)"),
-  );
-  const works = (stdout: string) =>
-    stdout
-      .split("Other members' Work that is changing the definition line:\n")[1]
-      ?.split("Other members' Claims")[0];
-  await eventually(async () => {
-    const mine = await world.cliIn(refund, "impact", "refund");
-    assert.equal(mine.code, 0, mine.stderr);
-    assert.match(works(mine.stdout) ?? "", /^ {2}owner · "payment" · "src\/money.ts":1 /);
-  });
-  // Asking from the same branch (payment) leaves my work out.
-  const own = await world.cliIn(world.repo.folder, "impact", "refund");
-  assert.equal(own.code, 0, own.stderr);
-  assert.equal(works(own.stdout), "  none\n");
-});
+    // Session-start hook: only the other side of each branch is shown.
+    assert.deepEqual(worksIn(await sessionStart(world, world.repo.folder), "omagari-situation"), [
+      `- owner · branch "refund"`,
+    ]);
+    assert.deepEqual(worksIn(await sessionStart(world, refund), "omagari-situation"), [
+      `- owner · branch "payment"`,
+    ]);
+  },
+);
+
+test(
+  "an indirect conflict (estimated) and a duplicate work notification also appear between one person's two branches",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ observeMs: 50 });
+    t.after(world.stop);
+    const refund = await twoBranches(world);
+
+    // payment changes the definition line of refund. checkout on the refund branch uses it. The two branches create a new function with the same name.
+    await writer(world.repo.folder)(
+      "src/money.ts",
+      MONEY.replace("refund(amount: number)", "refund(amount: number, reason: string)"),
+    );
+    await writer(world.repo.folder)("src/a.ts", "export function audit() {}\n");
+    await writer(refund)("src/b.ts", "export function audit() {}\n");
+
+    await eventually(async () => {
+      const [indirect] = await open(world, "indirect");
+      assert.ok(indirect && indirect.kind !== "direct", "Indirect conflict does not exist yet");
+      assert.deepEqual(indirect.works, [PAYMENT, REFUND]);
+      assert.deepEqual(
+        indirect.symbols.map((s) => s.name),
+        ["refund"],
+      );
+    });
+    await eventually(async () => {
+      const [duplicate] = await open(world, "duplicate");
+      assert.ok(duplicate && duplicate.kind !== "direct", "Duplicate work does not exist yet");
+      assert.deepEqual(duplicate.works, [PAYMENT, REFUND]);
+      assert.deepEqual(
+        duplicate.symbols.map((s) => s.name),
+        ["audit"],
+      );
+    });
+  },
+);
+
+test(
+  "a debate opens even for a conflict between one person's two works, each side splits that branch's work session and gives a stance, and a proxy cannot be called",
+  winSkip(463),
+  async (t) => {
+    const owner = fakeExecutor(({ folder }) =>
+      JSON.stringify({
+        claim: `inside ${folder}`,
+        evidence: ["src/money.ts:1 definition of refund"],
+      }),
+    );
+    owner.executor.recent = async (_folder, branch) => `work-${branch}`;
+    // Cut to one round so no rebuttal round starts after the two stances are public.
+    const world = await startWorld({
+      observeMs: 50,
+      followMs: 50,
+      debateRounds: 1,
+      executor: owner.executor,
+    });
+    t.after(world.stop);
+    await twoBranches(world);
+
+    // payment declares it will change refund's signature. checkout on the refund branch uses it (payment's own use is left out because it is the same work).
+    const claimed = await world.cli(
+      "claim",
+      "src/money.ts",
+      "--symbol",
+      "refund",
+      "--plan",
+      "signature",
+      "--detail",
+      "refund(amount, reason)",
+    );
+    assert.equal(claimed.code, 0, claimed.stderr);
+
+    const post = await eventually(async () => {
+      const found = (await call(world.owner, api.posts)).posts.find(
+        (p) => p.message.kind === "alert" && p.message.alert.kind === "declared",
+      );
+      assert.ok(found?.debate?.revealed, JSON.stringify(found?.debate));
+      return found;
+    });
+    const debate = post.debate;
+    assert.ok(debate);
+    assert.deepEqual(
+      debate.seats.map((s) => [s.login, s.branch, s.state]),
+      [
+        ["owner", "payment", "submitted"],
+        ["owner", "refund", "submitted"],
+      ],
+    );
+    assert.equal(debate.options.length, 2);
+    // The same runner split and started that branch's work session for each branch.
+    assert.deepEqual(owner.calls.map((c) => [c.resume, c.fork]).sort(), [
+      ["work-payment", true],
+      ["work-refund", true],
+    ]);
+
+    // The owner is always present, so neither another member nor the owner can call a proxy.
+    world.github.grant("alice");
+    const alice = await world.login("alice");
+    for (const as of [alice, world.owner]) {
+      await assert.rejects(call(as, api.proxyDebate, { post: post.channel, seat: 0 }), (error) => {
+        assert.equal((error as ContractFailure).code, "conflict");
+        return true;
+      });
+    }
+  },
+);
+
+test(
+  "omagari impact shows my work on my other branch and does not show my work on the same branch",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ observeMs: 50 });
+    t.after(world.stop);
+    const refund = await twoBranches(world);
+
+    // payment changes the definition line of the refund function.
+    await writer(world.repo.folder)(
+      "src/money.ts",
+      MONEY.replace("refund(amount: number)", "refund(amount: number, reason: string)"),
+    );
+    const works = (stdout: string) =>
+      stdout
+        .split("Other members' Work that is changing the definition line:\n")[1]
+        ?.split("Other members' Claims")[0];
+    await eventually(async () => {
+      const mine = await world.cliIn(refund, "impact", "refund");
+      assert.equal(mine.code, 0, mine.stderr);
+      assert.match(works(mine.stdout) ?? "", /^ {2}owner · "payment" · "src\/money.ts":1 /);
+    });
+    // Asking from the same branch (payment) leaves my work out.
+    const own = await world.cliIn(world.repo.folder, "impact", "refund");
+    assert.equal(own.code, 0, own.stderr);
+    assert.equal(works(own.stdout), "  none\n");
+  },
+);

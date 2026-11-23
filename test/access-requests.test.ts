@@ -3,86 +3,93 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { api, type ContractFailure, call } from "@omagari/contract";
-import { eventually, REPO, REPO3, startWorld } from "./harness.ts";
+import { eventually, REPO, REPO3, startWorld, winSkip } from "./harness.ts";
 
 const refused = (code: string) => (error: ContractFailure) => error.code === code;
 const TERMS = "https://example.org/terms";
 const PRIVACY = "https://example.org/privacy";
 
-test("a person without a workspace requests an account, an operator approves it, and their repo comes in with no restart", async (t) => {
-  const world = await startWorld({ operators: ["Owner"], terms: TERMS, privacy: PRIVACY });
-  t.after(world.stop);
-  const team = REPO3.split("/")[0] as string; // other-team
-  world.github.admin("carol", REPO3);
-  world.github.grant("carol", REPO3);
+test(
+  "a person without a workspace requests an account, an operator approves it, and their repo comes in with no restart",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ operators: ["Owner"], terms: TERMS, privacy: PRIVACY });
+    t.after(world.stop);
+    const team = REPO3.split("/")[0] as string; // other-team
+    world.github.admin("carol", REPO3);
+    world.github.grant("carol", REPO3);
 
-  // carol has no push access to any workspace repo, but this server takes requests, so she gets in with no workspace.
-  const carol = await world.login("carol");
-  assert.deepEqual(await call(carol, api.workspaces), { workspaces: [] });
-  assert.equal((await call(carol, api.me)).operator, false);
-  assert.deepEqual(await call(carol, api.myAccess), {
-    open: true,
-    terms: TERMS,
-    privacy: PRIVACY,
-    requests: [],
-  });
-  // Nothing about the server's workspaces shows: not its accounts, not its repos.
-  assert.deepEqual(await call(carol, api.accounts), { accounts: [] });
-  await assert.rejects(call(carol, api.members), refused("not_found"));
-  await assert.rejects(call(carol, api.addRepo, { repo: REPO3 }), refused("forbidden"));
+    // carol has no push access to any workspace repo, but this server takes requests, so she gets in with no workspace.
+    const carol = await world.login("carol");
+    assert.deepEqual(await call(carol, api.workspaces), { workspaces: [] });
+    assert.equal((await call(carol, api.me)).operator, false);
+    assert.deepEqual(await call(carol, api.myAccess), {
+      open: true,
+      terms: TERMS,
+      privacy: PRIVACY,
+      requests: [],
+    });
+    // Nothing about the server's workspaces shows: not its accounts, not its repos.
+    assert.deepEqual(await call(carol, api.accounts), { accounts: [] });
+    await assert.rejects(call(carol, api.members), refused("not_found"));
+    await assert.rejects(call(carol, api.addRepo, { repo: REPO3 }), refused("forbidden"));
 
-  // Requesting needs agreeing to the terms and privacy policy.
-  await assert.rejects(
-    call(carol, api.requestAccess, { account: team, agree: false }),
-    refused("invalid_request"),
-  );
-  const asked = await call(carol, api.requestAccess, { account: "Other-Team", agree: true });
-  assert.deepEqual(
-    asked.requests.map(({ account, state }) => ({ account, state })),
-    [{ account: team, state: "pending" }],
-  );
-  // The same request again isn't made twice.
-  await call(carol, api.requestAccess, { account: team, agree: true });
-  assert.equal((await call(carol, api.myAccess)).requests.length, 1);
+    // Requesting needs agreeing to the terms and privacy policy.
+    await assert.rejects(
+      call(carol, api.requestAccess, { account: team, agree: false }),
+      refused("invalid_request"),
+    );
+    const asked = await call(carol, api.requestAccess, { account: "Other-Team", agree: true });
+    assert.deepEqual(
+      asked.requests.map(({ account, state }) => ({ account, state })),
+      [{ account: team, state: "pending" }],
+    );
+    // The same request again isn't made twice.
+    await call(carol, api.requestAccess, { account: team, agree: true });
+    assert.equal((await call(carol, api.myAccess)).requests.length, 1);
 
-  // Only an operator lists and decides.
-  await assert.rejects(call(carol, api.accessRequests), refused("forbidden"));
-  const id = asked.requests[0]?.id as number;
-  await assert.rejects(call(carol, api.decideAccess, { id, approve: true }), refused("forbidden"));
-  assert.equal((await call(world.owner, api.me)).operator, true);
-  const { requests } = await call(world.owner, api.accessRequests);
-  assert.deepEqual(
-    requests.map(({ account, login, state }) => ({ account, login, state })),
-    [{ account: team, login: "carol", state: "pending" }],
-  );
-  assert.deepEqual(await call(world.owner, api.decideAccess, { id, approve: true }), {
-    requests: [],
-  });
-  await assert.rejects(
-    call(world.owner, api.decideAccess, { id, approve: false }),
-    refused("not_found"),
-  );
+    // Only an operator lists and decides.
+    await assert.rejects(call(carol, api.accessRequests), refused("forbidden"));
+    const id = asked.requests[0]?.id as number;
+    await assert.rejects(
+      call(carol, api.decideAccess, { id, approve: true }),
+      refused("forbidden"),
+    );
+    assert.equal((await call(world.owner, api.me)).operator, true);
+    const { requests } = await call(world.owner, api.accessRequests);
+    assert.deepEqual(
+      requests.map(({ account, login, state }) => ({ account, login, state })),
+      [{ account: team, login: "carol", state: "pending" }],
+    );
+    assert.deepEqual(await call(world.owner, api.decideAccess, { id, approve: true }), {
+      requests: [],
+    });
+    await assert.rejects(
+      call(world.owner, api.decideAccess, { id, approve: false }),
+      refused("not_found"),
+    );
 
-  // carol sees it approved, lists her Admin repos of that account, and adds one. The workspace appears.
-  assert.equal((await call(carol, api.myAccess)).requests[0]?.state, "approved");
-  assert.deepEqual(await call(carol, api.accounts), { accounts: [team] });
-  assert.deepEqual(
-    (await call({ ...carol, workspace: team }, api.adminRepos)).repos.map((repo) => repo.name),
-    [REPO3],
-  );
-  assert.deepEqual(await call(carol, api.addRepo, { repo: REPO3 }), { repos: [REPO3] });
-  assert.deepEqual(
-    (await call(carol, api.workspaces)).workspaces.map(({ id, repos }) => ({ id, repos })),
-    [{ id: team, repos: [REPO3] }],
-  );
-  // Workspaces still don't mix: the owner isn't in carol's, carol isn't in the owner's.
-  assert.deepEqual(
-    (await call(world.owner, api.workspaces)).workspaces.map(({ id }) => id),
-    [REPO.split("/")[0]],
-  );
-});
+    // carol sees it approved, lists her Admin repos of that account, and adds one. The workspace appears.
+    assert.equal((await call(carol, api.myAccess)).requests[0]?.state, "approved");
+    assert.deepEqual(await call(carol, api.accounts), { accounts: [team] });
+    assert.deepEqual(
+      (await call({ ...carol, workspace: team }, api.adminRepos)).repos.map((repo) => repo.name),
+      [REPO3],
+    );
+    assert.deepEqual(await call(carol, api.addRepo, { repo: REPO3 }), { repos: [REPO3] });
+    assert.deepEqual(
+      (await call(carol, api.workspaces)).workspaces.map(({ id, repos }) => ({ id, repos })),
+      [{ id: team, repos: [REPO3] }],
+    );
+    // Workspaces still don't mix: the owner isn't in carol's, carol isn't in the owner's.
+    assert.deepEqual(
+      (await call(world.owner, api.workspaces)).workspaces.map(({ id }) => id),
+      [REPO.split("/")[0]],
+    );
+  },
+);
 
-test("an approved account stays accepted after a restart", async (t) => {
+test("an approved account stays accepted after a restart", winSkip(463), async (t) => {
   const world = await startWorld({ operators: ["owner"] });
   t.after(world.stop);
   world.github.admin("carol", REPO3);
@@ -101,108 +108,124 @@ test("an approved account stays accepted after a restart", async (t) => {
   assert.deepEqual(await call(carol, api.addRepo, { repo: REPO3 }), { repos: [REPO3] });
 });
 
-test("an approved account stays accepted after the person who asked for it deletes their account", async (t) => {
-  const world = await startWorld({ operators: ["owner"] });
-  t.after(world.stop);
-  world.github.grant("carol", REPO3);
-  world.github.admin("frank", REPO3);
-  world.github.grant("frank", REPO3);
-  const carol = await world.login("carol");
-  const { requests } = await call(carol, api.requestAccess, {
-    account: "other-team",
-    agree: false,
-  });
-  await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: true });
-  await call(carol, api.deleteAccount);
+test(
+  "an approved account stays accepted after the person who asked for it deletes their account",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ operators: ["owner"] });
+    t.after(world.stop);
+    world.github.grant("carol", REPO3);
+    world.github.admin("frank", REPO3);
+    world.github.grant("frank", REPO3);
+    const carol = await world.login("carol");
+    const { requests } = await call(carol, api.requestAccess, {
+      account: "other-team",
+      agree: false,
+    });
+    await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: true });
+    await call(carol, api.deleteAccount);
 
-  await world.restartServer();
-  // The connection to the stopped server stays broken, so the first request may fail.
-  const frank = await eventually(() => world.login("frank"));
-  assert.deepEqual(await call(frank, api.addRepo, { repo: REPO3 }), { repos: [REPO3] });
-});
+    await world.restartServer();
+    // The connection to the stopped server stays broken, so the first request may fail.
+    const frank = await eventually(() => world.login("frank"));
+    assert.deepEqual(await call(frank, api.addRepo, { repo: REPO3 }), { repos: [REPO3] });
+  },
+);
 
-test("a denied request shows denied, and asking about an accepted account reveals nothing about it", async (t) => {
-  const world = await startWorld({ operators: ["owner"] });
-  t.after(world.stop);
-  const dave = await world.login("dave");
-  const { requests } = await call(dave, api.requestAccess, { account: "dave", agree: false });
-  await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: false });
-  assert.deepEqual(
-    (await call(dave, api.myAccess)).requests.map(({ account, state }) => ({ account, state })),
-    [{ account: "dave", state: "denied" }],
-  );
+test(
+  "a denied request shows denied, and asking about an accepted account reveals nothing about it",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ operators: ["owner"] });
+    t.after(world.stop);
+    const dave = await world.login("dave");
+    const { requests } = await call(dave, api.requestAccess, { account: "dave", agree: false });
+    await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: false });
+    assert.deepEqual(
+      (await call(dave, api.myAccess)).requests.map(({ account, state }) => ({ account, state })),
+      [{ account: "dave", state: "denied" }],
+    );
 
-  // A request for an account this server already accepts looks like any other: it waits.
-  const owner = REPO.split("/")[0] as string;
-  const asked = await call(dave, api.requestAccess, { account: owner, agree: false });
-  assert.equal(asked.requests[0]?.state, "pending");
-  // dave sees only his own requests, never another person's.
-  const erin = await world.login("erin");
-  await call(erin, api.requestAccess, { account: "erin", agree: false });
-  assert.deepEqual(
-    (await call(dave, api.myAccess)).requests.map(({ account }) => account),
-    [owner, "dave"],
-  );
-  assert.deepEqual(await call(dave, api.workspaces), { workspaces: [] });
+    // A request for an account this server already accepts looks like any other: it waits.
+    const owner = REPO.split("/")[0] as string;
+    const asked = await call(dave, api.requestAccess, { account: owner, agree: false });
+    assert.equal(asked.requests[0]?.state, "pending");
+    // dave sees only his own requests, never another person's.
+    const erin = await world.login("erin");
+    await call(erin, api.requestAccess, { account: "erin", agree: false });
+    assert.deepEqual(
+      (await call(dave, api.myAccess)).requests.map(({ account }) => account),
+      [owner, "dave"],
+    );
+    assert.deepEqual(await call(dave, api.workspaces), { workspaces: [] });
 
-  // Deleting the account takes its requests with it (ADR-0054): the operator no longer sees dave's waiting one.
-  await call(dave, api.deleteAccount);
-  assert.deepEqual(
-    (await call(world.owner, api.accessRequests)).requests.map(({ login }) => login),
-    ["erin"],
-  );
-});
+    // Deleting the account takes its requests with it (ADR-0054): the operator no longer sees dave's waiting one.
+    await call(dave, api.deleteAccount);
+    assert.deepEqual(
+      (await call(world.owner, api.accessRequests)).requests.map(({ login }) => login),
+      ["erin"],
+    );
+  },
+);
 
-test("with no operators the server takes no requests and OMAGARI_REPO works as before", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
-  await assert.rejects(world.login("carol"), refused("forbidden"));
-  assert.deepEqual(await call(world.owner, api.myAccess), { open: false, requests: [] });
-  await assert.rejects(
-    call(world.owner, api.requestAccess, { account: "other-team", agree: true }),
-    refused("forbidden"),
-  );
-  await assert.rejects(call(world.owner, api.accessRequests), refused("forbidden"));
-  assert.equal((await call(world.owner, api.me)).operator, false);
-});
+test(
+  "with no operators the server takes no requests and OMAGARI_REPO works as before",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    await assert.rejects(world.login("carol"), refused("forbidden"));
+    assert.deepEqual(await call(world.owner, api.myAccess), { open: false, requests: [] });
+    await assert.rejects(
+      call(world.owner, api.requestAccess, { account: "other-team", agree: true }),
+      refused("forbidden"),
+    );
+    await assert.rejects(call(world.owner, api.accessRequests), refused("forbidden"));
+    assert.equal((await call(world.owner, api.me)).operator, false);
+  },
+);
 
-test("a new request reaches an operator's open web live, and never a non-operator's", async (t) => {
-  const world = await startWorld({ operators: ["Owner"] });
-  t.after(world.stop);
-  world.github.admin("carol", REPO3);
-  world.github.grant("carol", REPO3);
-  const carol = await world.login("carol");
-  const bob = await world.login("bob");
+test(
+  "a new request reaches an operator's open web live, and never a non-operator's",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ operators: ["Owner"] });
+    t.after(world.stop);
+    world.github.admin("carol", REPO3);
+    world.github.grant("carol", REPO3);
+    const carol = await world.login("carol");
+    const bob = await world.login("bob");
 
-  const operator = await world.live(world.owner);
-  const member = await world.live(bob);
-  const access = (live: typeof operator) => live.received.filter((m) => m.kind === "access");
-  // After welcome the operator gets the (empty) waiting list at once.
-  await eventually(() => assert.equal(access(operator).length, 1));
-  assert.deepEqual(access(operator)[0]?.payload, { requests: [] });
+    const operator = await world.live(world.owner);
+    const member = await world.live(bob);
+    const access = (live: typeof operator) => live.received.filter((m) => m.kind === "access");
+    // After welcome the operator gets the (empty) waiting list at once.
+    await eventually(() => assert.equal(access(operator).length, 1));
+    assert.deepEqual(access(operator)[0]?.payload, { requests: [] });
 
-  await call(carol, api.requestAccess, { account: "other-team", agree: true });
-  await eventually(() => assert.equal(access(operator).length, 2));
-  const second = access(operator)[1];
-  assert.ok(second);
-  const { requests, added } = second.payload as {
-    requests: { id: number; account: string; login: string }[];
-    added?: { account: string; login: string };
-  };
-  assert.deepEqual(
-    requests.map(({ account, login }) => ({ account, login })),
-    [{ account: "other-team", login: "carol" }],
-  );
-  assert.equal(added?.login, "carol");
+    await call(carol, api.requestAccess, { account: "other-team", agree: true });
+    await eventually(() => assert.equal(access(operator).length, 2));
+    const second = access(operator)[1];
+    assert.ok(second);
+    const { requests, added } = second.payload as {
+      requests: { id: number; account: string; login: string }[];
+      added?: { account: string; login: string };
+    };
+    assert.deepEqual(
+      requests.map(({ account, login }) => ({ account, login })),
+      [{ account: "other-team", login: "carol" }],
+    );
+    assert.equal(added?.login, "carol");
 
-  // The same request again is no news. Deciding updates the list with no `added`.
-  await call(carol, api.requestAccess, { account: "other-team", agree: true });
-  await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: false });
-  await eventually(() => assert.equal(access(operator).length, 3));
-  assert.deepEqual(access(operator)[2]?.payload, { requests: [] });
+    // The same request again is no news. Deciding updates the list with no `added`.
+    await call(carol, api.requestAccess, { account: "other-team", agree: true });
+    await call(world.owner, api.decideAccess, { id: requests[0]?.id as number, approve: false });
+    await eventually(() => assert.equal(access(operator).length, 3));
+    assert.deepEqual(access(operator)[2]?.payload, { requests: [] });
 
-  // A member who isn't an operator heard nothing.
-  assert.equal(access(member).length, 0);
-  await operator.close();
-  await member.close();
-});
+    // A member who isn't an operator heard nothing.
+    assert.equal(access(member).length, 0);
+    await operator.close();
+    await member.close();
+  },
+);

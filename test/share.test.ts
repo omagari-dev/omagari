@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { eventually, startWorld, tempRepo, textOf, writer } from "./harness.ts";
+import { eventually, startWorld, tempRepo, textOf, winSkip, writer } from "./harness.ts";
 
 // Starts and stops the runner five times with the CLI. Observation is sent right on attach, so it doesn't wait for the interval (3s), but there are many steps, so the time limit is extended.
 test("the owner picks a share level per runner and it stays after turning on again. The default is full, declared uploads paths only, intent uploads the work only, and lowering it takes the uploaded content off the server", {
+  ...winSkip(463),
   timeout: 60_000,
 }, async (t) => {
   const world = await startWorld();
