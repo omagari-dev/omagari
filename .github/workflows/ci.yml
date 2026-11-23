@@ -36,3 +36,18 @@ jobs:
           "$out/prefix/bin/omagari" --help
           echo "{\"hook_event_name\":\"SessionStart\",\"cwd\":\"$PWD\",\"session_id\":\"ci\",\"source\":\"startup\"}" \
             | "$out/prefix/bin/omagari-hook" claude-code
+  # Windows에서도 타입 검사와 테스트를 돌린다. 브랜치 보호의 필수 검사로 걸어야 한다(ADR-0060).
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: 타입 검사
+        run: npm run typecheck
+      - name: 테스트
+        run: npm test
