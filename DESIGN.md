@@ -521,16 +521,16 @@ components:
     fontWeight: "{typography.app-body-strong.fontWeight}"
     lineHeight: "{typography.app-body-strong.lineHeight}"
     rounded: "{rounded.md}"
-    padding: 6px 8px
+    padding: 4px
   app-member-row-open:
     backgroundColor: "{colors.selected}"
     rounded: "{rounded.md}"
   app-member-status:
     textColor: "{colors.ink}"
     fontFamily: "{typography.app-caption.fontFamily}"
-    fontSize: "{typography.app-caption.fontSize}"
+    fontSize: 12px
     fontWeight: "{typography.app-caption.fontWeight}"
-    lineHeight: "{typography.app-caption.lineHeight}"
+    lineHeight: 1.33
   app-work-line:
     textColor: "{colors.ink}"
     fontFamily: "{typography.app-caption.fontFamily}"
@@ -1473,10 +1473,10 @@ It opens when you press the emoji button on the status message. The emoji button
 #### Member list
 
 - Group titles are "Online — 3" and "Offline — 1" (`{component.app-section-title}`). Away and do not disturb go under online.
-- **`app-member-row`** The whole row is a button (`aria-haspopup="dialog"`), and pressing it opens that person's profile card to the left of the row (see "Profile card" below). Padding 6px 8px, `{rounded.md}`, `{colors.hover}` on hover, and the row with its card open is `{colors.selected}`. Rows don't expand. The work and agents that used to sit in the expanded row moved into the profile card and the full view (2026-11-19 @Pancheble, #291 drafts 103-B and 104-A).
-  - A 40px person avatar (see "Person avatar and name" above) with a 13px presence dot.
+- **`app-member-row`** The whole row is a button (`aria-haspopup="dialog"`), and pressing it opens that person's profile card to the left of the row (see "Profile card" below). Padding 4px, a 36px avatar, and an 8px gap, the same as `{component.app-profile-panel}` (the name is 15px/600 and the second line is 12px; 2026-11-23 @Pancheble, #459). `{rounded.md}`, `{colors.hover}` on hover, and the row with its card open is `{colors.selected}`. Rows don't expand. The work and agents that used to sit in the expanded row moved into the profile card and the full view (2026-11-19 @Pancheble, #291 drafts 103-B and 104-A).
+  - A 36px person avatar (see "Person avatar and name" above) with a 12px presence dot.
   - First line: the name at 15px/600. If it's your row, "me" (나) (12px secondary) follows the name.
-  - Second line (`{component.app-member-status}` 13px): the status message, then "· N works" (secondary text) next to it. If the message is long, only the message is cut and the work count always shows. If there's no status message, the presence (away, do not disturb, offline) goes there in secondary text, and if there's neither, just "N works". The work count counts only visible works: a work with no changes, no status line, and no claim is left out of both the profile and the count (#266). If there's no visible work, it says "No work" (작업 없음) (2026-11-19 @Pancheble, #268 draft 98-A). While that person's agent is answering a Q&A, "Answering" (답하는 중) goes before the work count (if there are several agents, "Codex answering" (Codex 답하는 중)) (PRD 17, 2026-11-18 @Pancheble, #257).
+  - Second line (`{component.app-member-status}` 12px): the status message, then "· N works" (secondary text) next to it. If the message is long, only the message is cut and the work count always shows. If there's no status message, the presence (away, do not disturb, offline) goes there in secondary text, and if there's neither, just "N works". The work count counts only visible works: a work with no changes, no status line, and no claim is left out of both the profile and the count (#266). If there's no visible work, it says "No work" (작업 없음) (2026-11-19 @Pancheble, #268 draft 98-A). While that person's agent is answering a Q&A, "Answering" (답하는 중) goes before the work count (if there are several agents, "Codex answering" (Codex 답하는 중)) (PRD 17, 2026-11-18 @Pancheble, #257).
   - No chevron.
 - A person who's offline gets a 50% faded avatar and a secondary-text-color name.
 

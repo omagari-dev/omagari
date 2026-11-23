@@ -2398,13 +2398,13 @@ button.message-gif {
   background: var(--selected);
 }
 
-/* app-member-row: 40px avatar, name starts 60px from the left. */
+/* app-member-row: same as the profile panel (.profile-button): 36px avatar, 8px gap, 4px padding, name starts 48px from the left. */
 .member-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 4px;
   border: 0;
   border-radius: var(--rounded-md);
   background: transparent;
@@ -2461,8 +2461,8 @@ button.member-row:active {
   min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.38;
+  font-size: 12px;
+  line-height: 1.33;
   white-space: nowrap;
 }
 
