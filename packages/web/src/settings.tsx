@@ -615,6 +615,12 @@ function MergeCheckGroup({ runner, check }: Reply["mergeCheck"]) {
     ],
     off: [words.runOff, off],
     no_sandbox: [words.noSandbox, help(words.howToInstall, "sandbox")],
+    unsandboxed: [
+      words.runUnsandboxed,
+      <span key="unsandboxed" className="badge warning">
+        {words.unsandboxedBadge}
+      </span>,
+    ],
     offline: [words.runnerOff, off],
   };
   const [description, control] = rows[runner];

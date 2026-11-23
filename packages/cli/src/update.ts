@@ -1,6 +1,7 @@
 // Fetches the installed clone when the server's contract is newer and rejected us (ADR-0042). Never touches the watched repo folder.
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { execShim } from "@omagari/contract/shim";
 import { checkoutBranch, checkoutRoot, installedPackage } from "@omagari/contract/version";
 
 /** Marker passed to the runner restarted from the fetched clone. Stops it from fetching the same version again. */
@@ -31,7 +32,7 @@ export async function updateNpm(): Promise<Updated> {
   if (!installed) return { todo: "This is not an npm install" };
   const command = `npm i -g omagari@${installed.tag}`;
   try {
-    await promisify(execFile)("npm", ["i", "-g", `omagari@${installed.tag}`]);
+    await execShim("npm", ["i", "-g", `omagari@${installed.tag}`]);
   } catch (error) {
     const why = error instanceof Error ? error.message : error;
     return {
@@ -59,7 +60,9 @@ export async function updateClone(): Promise<Updated> {
       todo: "The clone is not on a branch. Check out a branch and update it",
     };
   const run = async (file: string, ...args: string[]) =>
-    (await promisify(execFile)(file, args, { cwd: root })).stdout.trim();
+    (await (file === "npm" ? execShim : promisify(execFile))(file, args, { cwd: root })).stdout
+      .toString()
+      .trim();
   const fail = (what: string, error: unknown) => ({
     todo: `${what} (${root}): ${error instanceof Error ? error.message : error}`,
   });

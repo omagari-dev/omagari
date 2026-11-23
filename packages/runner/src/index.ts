@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
@@ -52,6 +52,7 @@ import {
   type WorkRef,
   type WorkView,
 } from "@omagari/contract";
+import { execShim, spawnShim } from "@omagari/contract/shim";
 import { checkoutBranch, checkoutVersion, installedPackage } from "@omagari/contract/version";
 import {
   CHECK_LIMITS,
@@ -63,6 +64,7 @@ import {
   osSandbox,
   readCheck,
   type Sandbox,
+  unsandboxed,
   workTree,
 } from "./check.ts";
 import { covers, overlap, resolve, see } from "./claims.ts";
@@ -153,7 +155,7 @@ async function converse<T>(
   lines: object[],
   pick: (event: Record<string, unknown>) => T | undefined,
 ): Promise<T> {
-  const child = spawn(command, args, {
+  const child = spawnShim(command, args, {
     stdio: ["pipe", "pipe", "ignore"],
     signal: AbortSignal.timeout(CHOICES_TIMEOUT_MS),
   });
@@ -226,7 +228,7 @@ export const claudeCode: Executor = async ({
   model,
   effort,
 }) => {
-  const run = execFileAsync(
+  const run = execShim(
     "claude",
     [
       "-p",
@@ -347,7 +349,7 @@ type CodexEvent = {
  */
 export const codex: Executor = async ({ message, resume, fork, folder, signal, model, effort }) => {
   // Ask from the work folder so the repo's `.codex/config.toml` is read too. Codex only accepts `[a-zA-Z0-9_-]` in server names.
-  const listed = await execFileAsync("codex", ["mcp", "list", "--json"], {
+  const listed = await execShim("codex", ["mcp", "list", "--json"], {
     cwd: folder,
     signal,
   });
@@ -372,7 +374,7 @@ export const codex: Executor = async ({ message, resume, fork, folder, signal, m
           ...(resume ? ["resume", resume] : []),
           "-",
         ];
-  const run = execFileAsync("codex", args, {
+  const run = execShim("codex", args, {
     cwd: folder,
     maxBuffer: 64 * 1024 * 1024,
     signal,
@@ -453,7 +455,7 @@ codex.choices = () =>
 
 /** Whether Codex can run on this machine: it's installed and logged in (`codex login status` exits with 0). */
 export const codexReady = () =>
-  execFileAsync("codex", ["login", "status"]).then(
+  execShim("codex", ["login", "status"]).then(
     () => true,
     () => false,
   );
@@ -591,6 +593,12 @@ export function backgroundSocket() {
   const id = createHash("sha256").update(config).digest("hex").slice(0, 16);
   return localSocket(`omagari-background-${id}`);
 }
+
+/** What the background runner is sent to make it stop (a folder is always absolute, so this can't be one). */
+export const STOP = "stop";
+
+/** Asks the background runner to close its runners and exit. The only way to stop it cleanly on Windows, which has no SIGTERM (ADR-0060). Throws if it's off. */
+export const stopBackground = () => callBackground(STOP).then(() => undefined);
 
 /**
  * Tells the background runner about `folder` (the session-start hook) and returns the runner sockets it watches, one per repo.
@@ -848,8 +856,8 @@ export async function startRunner(options: {
   sandbox?: Sandbox;
   /** The limits for check commands and setup commands. By default, 5 minutes, 4MB of output, and 10 minutes for setup commands. */
   checkLimits?: Partial<CheckLimits>;
-  /** Whether to turn on merge runs (`omagari runner --merge-check`). Default is on (ADR-0034). */
-  mergeCheck?: "on" | "off";
+  /** Whether to turn on merge runs (`omagari runner --merge-check`). Default is on (ADR-0034). `unsandboxed` runs them without a sandbox, only on native Windows (ADR-0059). */
+  mergeCheck?: "on" | "off" | "unsandboxed";
   /** How long the two works must be quiet before a merge run. Default 2 minutes. */
   quietMs?: number;
   /** A person started it by hand, which shares the repo (ADR-0049). Default true; the background runner passes false. */
@@ -893,10 +901,18 @@ export async function startRunner(options: {
       )
     ).filter(([, listed]) => listed),
   );
-  const sandbox = options.sandbox ?? osSandbox;
+  // Without a sandbox it runs only on native Windows, and only when a person turned it on (ADR-0059). The CLI asks; here it's only refused elsewhere.
+  if (options.mergeCheck === "unsandboxed" && process.platform !== "win32")
+    throw new Error("Merge runs without a sandbox are only for native Windows");
+  const sandbox =
+    options.mergeCheck === "unsandboxed" ? unsandboxed : (options.sandbox ?? osSandbox);
   // Even if it's turned on, it doesn't run without sandbox tools (ADR-0033). The server is told when the runner connects.
   const mergeCheck: MergeCheckState =
-    options.mergeCheck === "off" ? "off" : (await sandbox.unavailable()) ? "no_sandbox" : "on";
+    options.mergeCheck === "off" || options.mergeCheck === "unsandboxed"
+      ? options.mergeCheck
+      : (await sandbox.unavailable())
+        ? "no_sandbox"
+        : "on";
   const url = new URL(RUNNER_SOCKET, options.serverUrl);
   url.protocol = url.protocol.replace("http", "ws");
   const timeoutMs = options.welcomeTimeoutMs ?? 10_000;
@@ -1727,7 +1743,7 @@ export async function startRunner(options: {
     if (indirect.length === 0) return reports;
     const { config } = read;
     // If there's no check command or the sandbox can't be used, whatever's merged is "couldn't run". Then Git isn't called, and quietness is judged from the observation alone.
-    const blocked = config ? await (options.sandbox ?? osSandbox).unavailable() : read.problem;
+    const blocked = config ? await sandbox.unavailable() : read.problem;
     for (const pair of indirect) {
       const key = JSON.stringify([pair.branch, pair.theirs.login, pair.theirs.branch]);
       const mine = trees.find(({ work }) => work.branch === pair.branch);

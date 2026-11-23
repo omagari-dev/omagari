@@ -82,7 +82,7 @@ async function member(
   extra: {
     sandbox?: Sandbox;
     quietMs?: number;
-    mergeCheck?: "on" | "off";
+    mergeCheck?: "on" | "off" | "unsandboxed";
   } = {},
 ) {
   world.github.grant(login);
