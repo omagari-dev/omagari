@@ -8,16 +8,19 @@ import { REPO, startWorld, winSkip } from "./harness.ts";
 
 const INSTALL = "https://github.com/apps/omagari-test/installations/new";
 
+// On slow windows-latest a 300 ms token can expire between a refresh and the GitHub call it's for.
+const LIFETIME_MS = process.platform === "win32" ? 1_500 : 300;
+
 test("with a GitHub App, an expiring token is refreshed before GitHub calls, so a member stays signed in past expiry", async (t) => {
   // Each re-check reads push access on GitHub with the member's token. With an expired token it would read "no access" and end the session.
   const world = await startWorld({
     recheckMs: 50,
     githubApp: "omagari-test",
-    setup: (github) => github.app(300),
+    setup: (github) => github.app(LIFETIME_MS),
   });
   t.after(world.stop);
 
-  await sleep(1_000);
+  await sleep(LIFETIME_MS * 3);
   assert.ok(world.github.refreshes > 0);
   assert.equal((await call(world.owner, api.me)).login, "owner");
   assert.deepEqual(await world.agents(world.owner), { owner: "online" });
