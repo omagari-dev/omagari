@@ -1,9 +1,12 @@
 // The background runner (ADR-0049): one process per user that runs one runner per repo folder, in-process.
 // The session-start hook sends it folders over one socket. It keeps the folders in the config folder and starts them again after a restart.
+
+import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
+import { promisify } from "node:util";
 import {
   backgroundSocket,
   OutsideAccounts,
@@ -15,7 +18,10 @@ import {
 } from "@omagari/runner";
 
 /** How often it tries again the folders whose runner isn't on (server down at login, a terminal runner that ended). */
-const RETRY_MS = 60_000;
+// The env var is for tests, which can't wait a minute.
+const RETRY_MS = Number(process.env.OMAGARI_BACKGROUND_RETRY_MS) || 60_000;
+
+const execFileAsync = promisify(execFile);
 
 type Running = { ended: Promise<unknown>; stop: () => Promise<void> | void };
 
@@ -33,6 +39,14 @@ export async function background(foldersFile: string, start: (folder: string) =>
     if (said.get(key) !== line) console.log(line);
     said.set(key, line);
   };
+  /** The folder each repo's runner was started in, and the other working trees of that repo seen last time it was alive (main working tree first). */
+  const where = new Map<string, { folder: string; trees: string[] }>();
+  /** Still a repo's own top folder. A removed worktree whose empty folder is left inside another repo doesn't count. */
+  const alive = (folder: string) =>
+    readRepo(folder).then(
+      (repo) => repo.folder === folder,
+      () => false,
+    );
   const save = async () => {
     await mkdir(dirname(foldersFile), { recursive: true, mode: 0o700 });
     await writeFile(foldersFile, `${JSON.stringify(folders, null, 2)}\n`);
@@ -42,11 +56,21 @@ export async function background(foldersFile: string, start: (folder: string) =>
   async function watch(folder: string) {
     const { socket } = await runnerPaths(folder);
     const current = running.get(socket);
-    if (current) return current;
+    const at = where.get(socket);
+    if (current && at && at.folder !== folder && !(await alive(at.folder))) {
+      // The folder it was started in is gone (a removed worktree), so it moves to this live one (#488).
+      (await current)?.stop();
+      running.delete(socket);
+      say(socket, `The folder ${at.folder} is gone. Watching ${folder} instead`);
+      if (!folders.includes(folder)) folders.push(folder);
+      await save();
+    } else if (current) return current;
     const started = (async () => {
       const runner = await start(folder);
+      where.set(socket, { folder, trees: (await treesOf(folder)) ?? at?.trees ?? [] });
       say(socket, `Watching ${folder}`);
       runner.ended.then((reason) => {
+        if (running.get(socket) !== started) return; // it was moved to another folder
         running.delete(socket);
         say(
           socket,
@@ -67,17 +91,54 @@ export async function background(foldersFile: string, start: (folder: string) =>
     return started;
   }
 
+  /** The working trees of the repo `folder` is in, main working tree first. */
+  const treesOf = async (folder: string) => {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", folder, "worktree", "list", "--porcelain", "-z"],
+      { maxBuffer: 16 * 1024 * 1024 },
+    ).catch(() => ({ stdout: "" }));
+    const trees = stdout
+      .split("\0")
+      .filter((field) => field.startsWith("worktree "))
+      .map((field) => field.slice("worktree ".length));
+    return trees.length ? trees : undefined;
+  };
+
+  /** Remembers the other working trees of each live runner's repo, and moves a runner whose folder is gone to one of them. If none is left it stops and drops the folder. */
+  async function heal() {
+    for (const [socket, at] of [...where]) {
+      if (await alive(at.folder)) {
+        at.trees = (await treesOf(at.folder)) ?? at.trees;
+        continue;
+      }
+      let next: string | undefined;
+      for (const tree of [...at.trees, ...folders]) {
+        if (tree === at.folder || !(await alive(tree))) continue;
+        if ((await runnerPaths(tree).catch(() => undefined))?.socket !== socket) continue;
+        next = tree;
+        break;
+      }
+      if (next) await watch(next);
+      else {
+        (await running.get(socket))?.stop();
+        running.delete(socket);
+        where.delete(socket);
+        say(socket, `The folder ${at.folder} is gone and no other folder of its repo is left`);
+      }
+    }
+  }
+
   /** Starts every kept folder that isn't on. Folders that are gone (or no longer a Git repo with a GitHub remote) are dropped. */
   async function watchAll() {
+    await heal();
     const kept = await Promise.all(
       folders.map((folder) =>
-        readRepo(folder).then(
-          async () => {
-            await watch(folder);
-            return folders.includes(folder) ? folder : undefined;
-          },
-          () => undefined,
-        ),
+        alive(folder).then(async (ok) => {
+          if (!ok) return undefined;
+          await watch(folder);
+          return folders.includes(folder) ? folder : undefined;
+        }),
       ),
     );
     const left = kept.filter((folder) => folder !== undefined);
