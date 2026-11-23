@@ -2325,14 +2325,14 @@ button.message-gif {
   color: var(--error);
 }
 
-/* Right column (app-right-panel): a floating panel like the channel panel, 300px wide. At 1069px and above it is the third column. */
+/* Right column (app-right-panel): a floating panel like the channel panel, 240px wide. At 1069px and above it is the third column. */
 @media (min-width: 1069px) {
   .app.with-panel {
-    grid-template-columns: 240px minmax(0, 1fr) 300px;
+    grid-template-columns: 240px minmax(0, 1fr) 240px;
   }
 
   .app.folded.with-panel {
-    grid-template-columns: 0 minmax(0, 1fr) 300px;
+    grid-template-columns: 0 minmax(0, 1fr) 240px;
   }
 }
 
@@ -2467,6 +2467,7 @@ button.member-row:active {
 }
 
 .status-message {
+  flex-shrink: 8;
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
@@ -2474,7 +2475,9 @@ button.member-row:active {
 }
 
 .status-rest {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chevron {

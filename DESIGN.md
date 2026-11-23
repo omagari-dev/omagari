@@ -454,7 +454,7 @@ components:
     borderColor: "{colors.selected}"
     rounded: "{rounded.lg}"
     padding: 14px 8px 8px
-    width: 300px
+    width: 240px
   app-channel-header:
     textColor: "{colors.ink}"
     borderColor: "{colors.divider}"
@@ -1231,7 +1231,7 @@ Apple's whitespace is the product's pedestal. Every tile begins with at least 64
 
 ### App frame
 
-- **Window**: the window background is `{colors.canvas}`, and the three panels sit inside it with 8px padding and 8px gaps. The Channels panel on the left is 240px, the conversation (the remaining width) is in the middle, and the right panel is 300px.
+- **Window**: the window background is `{colors.canvas}`, and the three panels sit inside it with 8px padding and 8px gaps. The Channels panel on the left is 240px, the conversation (the remaining width) is in the middle, and the right panel is also 240px.
 - **Floating panels**: the Channels panel and the right panel are `{component.app-side-panel}` and `{component.app-right-panel}`. They use a parchment background, `{rounded.lg}` 18px, and an inner 1px line (black 6%). The conversation isn't a panel; it sits directly on the window background.
 - **Only one right panel**: only one of the member list, My agent (DM), or a Post opened in the side panel (480px, "Conflict forum") is open at a time. The two buttons in the channel header bar open them, and pressing the same button again closes it. When it closes, the conversation gets wider.
 - **The Channels panel collapses** (834px and up): collapsing removes the panel from the layout, and the conversation widens to 8px from the window's left edge. While it's collapsed, you can peek at it from the window's left edge. It starts expanded. Details are in "Collapsing the Channels panel".
