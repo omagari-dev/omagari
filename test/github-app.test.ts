@@ -129,3 +129,28 @@ test("an OAuth app's token, which doesn't expire, works as before: no refresh an
   });
   assert.equal((await call(world.owner, api.me)).repo, REPO);
 });
+
+test("a recheck whose GitHub answer came back after its token expired doesn't end the session as forbidden (#483)", async (t) => {
+  // The ordering that gave `forbidden`: the recheck read the member's token, GitHub's answer for it was slow, and by then the token had expired.
+  // An expired token reads "no push permission" (GitHub answers 401), which the recheck took for a real answer. It's forced here with a held answer.
+  const world = await startWorld({
+    recheckMs: 50,
+    githubApp: "omagari-test",
+    setup: (github) => github.app(200),
+  });
+  t.after(world.stop);
+  await world.live(world.owner);
+
+  const release = world.github.hold("owner", REPO);
+  await sleep(600); // the recheck is waiting on GitHub, and its token expires meanwhile
+  release();
+  await sleep(300); // the recheck gets its answer and decides
+  assert.equal((await call(world.owner, api.me)).login, "owner");
+  assert.deepEqual(await world.agents(world.owner), { owner: "online" });
+
+  // The first reason wins: when GitHub rejects the refresh token now, the person is told to sign in again.
+  world.github.refreshTokens.clear();
+  const reason = await world.runner.ended;
+  assert.ok(reason instanceof ContractFailure);
+  assert.equal(reason.code, "unauthorized");
+});
