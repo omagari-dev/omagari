@@ -38,7 +38,9 @@ const stored = (database: string, text: string) => {
   }
 };
 
-test("deleting an account removes the person everywhere, keeps their messages as a deleted member's, and drops their runner and web", async (t) => {
+test("deleting an account removes the person everywhere, keeps their messages as a deleted member's, and drops their runner and web", {
+  timeout: 120_000,
+}, async (t) => {
   const world = await startWorld({ observeMs: 50 });
   t.after(world.stop);
   world.github.grant("alice");

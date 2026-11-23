@@ -161,8 +161,15 @@ export const said = (m: ChannelMessage) =>
         ? `Decision ${m.event}: ${m.decision.title}${m.reason ? ` (${m.reason})` : ""}`
         : `Alert: ${m.alert.works.map((w) => `${w.login}/${w.branch}`).join(" ")}`;
 
+// windows-latest is several times slower at starting processes and running Git, so it gets longer to see a change.
+const EVENTUALLY_MS = process.platform === "win32" ? 30_000 : 10_000;
+
 /** Repeats until `check` stops throwing. Use it to check things you have to wait for (connections, rechecks). */
-export async function eventually<T>(check: () => T | Promise<T>, timeoutMs = 10_000): Promise<T> {
+
+export async function eventually<T>(
+  check: () => T | Promise<T>,
+  timeoutMs = EVENTUALLY_MS,
+): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {
