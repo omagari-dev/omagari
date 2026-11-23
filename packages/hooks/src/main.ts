@@ -8,7 +8,7 @@
 // a repo outside the server's accounts or the workspace. The runner checks a folder's remotes against the accounts before it sends anything.
 import { execFile } from "node:child_process";
 import { access, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { text } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -17,6 +17,7 @@ import {
   ExecutorId,
   filesText,
   type NearbyWork,
+  repoPath,
   shareLevelsText,
   type WorkView,
 } from "@omagari/contract";
@@ -380,7 +381,7 @@ async function preEdit(event: HookEvent, executor: ExecutorId) {
     targets.map(async (target) => {
       const file = resolve(cwd, target);
       const folder = await realpath(dirname(file)).catch(() => dirname(file));
-      return relative(top, join(folder, basename(file)));
+      return repoPath(relative(top, join(folder, basename(file))), sep);
     }),
   );
   const files = [...new Set(inRepo)].filter(

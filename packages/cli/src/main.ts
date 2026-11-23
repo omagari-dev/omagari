@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs, promisify } from "node:util";
 import {
@@ -20,6 +20,7 @@ import {
   PLAN_KINDS,
   Plan,
   RunVerdict,
+  repoPath,
   ShareLevel,
   shareLevelsText,
   VERDICT_LABELS,
@@ -638,7 +639,9 @@ async function target(path: string | undefined) {
     lines = { from: Number(match[1]), to: Number(match[2] ?? match[1]) };
   }
   const relativePath =
-    path === undefined ? undefined : relative(top, resolve(path)) + (path.endsWith("/") ? "/" : "");
+    path === undefined
+      ? undefined
+      : repoPath(relative(top, resolve(path)), sep) + (/[\\/]$/.test(path) ? "/" : "");
   if (relativePath?.startsWith("..")) throw new Error(`Path is outside the repo: ${path}`);
   return {
     plan: plan(values),
@@ -887,7 +890,8 @@ async function wait() {
   const path =
     values.path === undefined
       ? undefined
-      : relative(top, resolve(values.path)) + (values.path.endsWith("/") ? "/" : "");
+      : repoPath(relative(top, resolve(values.path)), sep) +
+        (/[\\/]$/.test(values.path) ? "/" : "");
   const deadline = Date.now() + seconds * 1000;
   for (;;) {
     if (path === undefined) {

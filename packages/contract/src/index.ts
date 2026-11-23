@@ -178,6 +178,9 @@ export const MAX_STATUS_CHARS = 200;
  */
 export const isDeletedMember = (login: string) => login.startsWith("~");
 
+/** A repo-relative path as the server and Git write it: `/` on every OS (#464). `sep` is the OS separator (`path.sep`). */
+export const repoPath = (relativePath: string, sep = "/") => relativePath.split(sep).join("/");
+
 /** The executor that runs agent sessions. An agent is an owner-executor pair, so there is one per executor (ADR-0015). */
 export const ExecutorId = z.enum(["claude-code", "codex"]);
 export type ExecutorId = z.infer<typeof ExecutorId>;
