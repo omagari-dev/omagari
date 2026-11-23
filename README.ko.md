@@ -84,7 +84,7 @@ omagari setup
 
 웹의 "컴퓨터 연결" 카드에 서버 주소가 채워진 이 두 줄이 나와요. 에이전트에게 붙여 넣고 실행해 달라고 해도 돼요.
 
-합쳐 돌려 보기, 업데이트, Windows(WSL2)가 필요하면 [기기 설정](https://omagari.org/setup)을 봐요. 문서 사이트는 영어예요.
+합쳐 돌려 보기, 업데이트, Windows가 필요하면 [기기 설정](https://omagari.org/setup)을 봐요. 문서 사이트는 영어예요.
 
 ## 어떻게 돌아가나
 
@@ -137,7 +137,7 @@ Claude Code와 Codex예요. 각자 주인의 로그인과 사용량으로 돌아
 기본 공유 수준(`full`)에서는 내가 바꾼 파일의 내용이 팀 서버로 올라가요. 팀원의 러너가 합쳐서 검사할 수 있게요. `omagari runner --share`로 `declared`(경로만)나 `intent`(상태 한 줄만)를 고를 수 있고, 고른 것은 그 레포에 남아요. 베타 서버에서는 그 서버가 저희 서버예요. [개인정보 처리방침](https://omagari.org/ko/privacy)을 봐요.
 
 **Windows에서 돼요?**
-WSL2 안에서 `omagari setup`부터 하고, 레포도 WSL2 안에 둬요. [기기 설정](https://omagari.org/setup)을 봐요.
+네이티브 Windows에서도 PowerShell로 돼요. WSL2는 필요 없어요. 다만 합쳐 돌려 보기는 샌드박스가 아직 없어서 꺼져 있어요. 샌드박스 없이 켜면 검사 명령이 내 Windows 계정으로 돌아서, 서버와 같은 워크스페이스 사람들을 믿을 때만 켜요. 샌드박스가 있는 합쳐 돌려 보기가 필요하면 WSL2를 써요. 자세한 건 [기기 설정](https://omagari.org/setup)과 [합쳐 돌려 보기](https://omagari.org/merge-runs)를 봐요.
 
 **팀 없이 써 볼 수 있어요?**
 [데모 서버](CONTRIBUTING.md#try-the-ui-without-a-team)로 화면을 둘러볼 수 있어요. Omagari는 2~10명 팀을 위한 거라, 혼자서는 볼 것이 많지 않아요.

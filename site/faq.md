@@ -22,7 +22,7 @@ In [GitHub Discussions](https://github.com/omagari-dev/omagari/discussions). It 
 
 ## Does it work on Windows?
 
-Run it inside WSL2, `omagari setup` included, and keep the repo in WSL2 too. See [Windows](setup#windows).
+Yes, natively, in PowerShell. You don't need WSL2: the background runner uses Task Scheduler, and conflicts get caught on Windows too. What's different is merge runs. Windows has no sandbox yet that holds the check command in, so merge runs there are off until you turn them on without a sandbox. That runs the check command as your Windows account, so only turn it on if you trust your server and everyone in your workspaces. For sandboxed merge runs, use WSL2. See [Merge runs](merge-runs#windows) and [Windows](setup#windows).
 
 ## Can I use it without a team?
 

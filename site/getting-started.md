@@ -53,4 +53,4 @@ After that you don't start anything yourself. The runner watches every repo you'
 - Your agent gets a short note about nearby work when a session starts and before it edits a file.
 - When your work and a teammate's might collide, a post shows up in a forum. See [Conflicts](conflicts).
 
-Need Windows (WSL2), updates, or the details of the background runner? See [Set up a machine](setup).
+Need Windows, updates, or the details of the background runner? See [Set up a machine](setup).
