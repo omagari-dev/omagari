@@ -3161,8 +3161,12 @@ export async function startServer(options: {
     }
   };
 
+  /** Connections already refused. A connection gets one refusal, the first, so the person is told the real reason. */
+  const refused = new WeakSet<WSContext>();
   /** Sends `error` and closes with 1008. A runner's and a web's `error` have the same shape. */
   const refuse = (socket: WSContext, error: ContractError, re?: string) => {
+    if (refused.has(socket)) return;
+    refused.add(socket);
     socket.send(encode(serverToRunner, "error", error, re));
     socket.close(1008, error.code);
   };
@@ -3249,16 +3253,25 @@ export async function startServer(options: {
 
   mount(app, api.health, () => ({ contract: CONTRACT_VERSION }));
 
+  /** Whether `token` is still the live token of `session`: not replaced by a refresh, not expired, and the session hasn't ended. */
+  const live = (session: string, token: string) => {
+    const row = db
+      .prepare("SELECT token_hash, expires_at FROM sessions WHERE hash = ?")
+      .get(session) as { token_hash: string; expires_at: number | null } | undefined;
+    return !!row && row.token_hash === hash(token) && (row.expires_at ?? Infinity) > Date.now();
+  };
   /**
    * Reads with `token` whether the member has push access to each repo in the workspace and records it (ADR-0043). For repos GitHub didn't answer, keeps the old value.
    * `push` is the repos with access, `unknown` the repos it didn't answer for.
    */
-  const readAccess = async (login: string, token: string) => {
+  const readAccess = async (login: string, token: string, session?: string) => {
     const push: string[] = [];
     const unknown: string[] = [];
     for (let repo of allRepos()) {
       let can = await github.canPush(token, repo);
       if (stopped) break;
+      // With `session`: a "no" from a token that was replaced, expired, or whose session ended (GitHub answers 401) says nothing about permission (#483).
+      if (can && !can.push && session && !live(session, token)) can = undefined;
       // A different repo with the same name (different id) is treated as no access. It isn't carried over either.
       if (can?.id !== undefined && !sameRepo(repo, can.id)) can = { push: false, name: repo };
       if (can && can.name !== repo && moveRepo(repo, can.name)) repo = can.name;
@@ -5860,12 +5873,10 @@ export async function startServer(options: {
       for (const row of rows) {
         // Skip sessions that ended above, or when GitHub rejected their refresh.
         if (!db.prepare("SELECT 1 FROM sessions WHERE hash = ?").get(row.hash)) continue;
-        const access = await readAccess(row.login, row.github_token);
+        // A read made with a token that stopped being live while GitHub answered comes back as unknown, so it neither ends the session nor drops access (#483).
+        const access = await readAccess(row.login, row.github_token, row.hash);
         if (stopped) return;
         if (access.push.length > 0 || access.unknown.length > 0 || operators.size > 0) continue;
-        // The session may have ended while GitHub was read (a refresh GitHub rejected). Then the access above was read with its
-        // expired token and says nothing about permission, and the person was already told to sign in again.
-        if (!db.prepare("SELECT 1 FROM sessions WHERE hash = ?").get(row.hash)) continue;
         endSession(row.hash, {
           code: "forbidden",
           message: `${row.login} was removed: no push permission on any workspace repo anymore`,
