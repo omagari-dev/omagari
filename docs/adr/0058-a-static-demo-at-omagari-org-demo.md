@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A static demo at omagari.org/demo/, answered in the browser
 
-Decided by the hub on 2026-11-23 while @Pancheble was away; to confirm (#444). @Pancheble asked for "a way to look around before installing" and left the details to the hub.
+Decided by the hub on 2026-11-23 while @Pancheble was away (#444); @Pancheble accepted it the same day. @Pancheble asked for "a way to look around before installing" and left the details to the hub.
 
 Today nobody sees Omagari working before signing in with GitHub, asking for access, waiting for approval, installing the GitHub App, and installing the CLI. The landing page (ADR-0057) has screenshots, but nothing to click.
 
