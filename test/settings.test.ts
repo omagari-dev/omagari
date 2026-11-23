@@ -1,49 +1,62 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { api, call } from "@omagari/contract";
-import { eventually, fakeExecutor, fakeSandbox, startWorld, tempRepo, writer } from "./harness.ts";
+import {
+  eventually,
+  fakeExecutor,
+  fakeSandbox,
+  startWorld,
+  tempRepo,
+  winSkip,
+  writer,
+} from "./harness.ts";
 
-test("settings read my switch, how many my agent answered, and the last question", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
-  world.github.grant("bob");
-  const bob = await world.login("bob");
-  const fake = fakeExecutor((input) => `bob's answer ${input.message.length}`);
-  const desk = await world.desk(bob, undefined, {
-    "claude-code": fake.executor,
-  });
-  t.after(desk.remove);
+test(
+  "settings read my switch, how many my agent answered, and the last question",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    world.github.grant("bob");
+    const bob = await world.login("bob");
+    const fake = fakeExecutor((input) => `bob's answer ${input.message.length}`);
+    const desk = await world.desk(bob, undefined, {
+      "claude-code": fake.executor,
+    });
+    t.after(desk.remove);
 
-  // At first it's on, and nothing has been answered.
-  const first = await call(bob, api.settings);
-  assert.equal(first.askSwitch, true);
-  assert.deepEqual(first.answered, { count: 0, last: null });
+    // At first it's on, and nothing has been answered.
+    const first = await call(bob, api.settings);
+    assert.equal(first.askSwitch, true);
+    assert.deepEqual(first.answered, { count: 0, last: null });
 
-  // When owner asks twice and bob's agent answers, it's counted for bob and the last question shows. It isn't counted for the asker.
-  for (const question of ["Should charge() add a retry?", "Who calls calcRefund()?"]) {
-    const asked = await world.cli("ask", "bob", question);
-    assert.equal(asked.code, 0, asked.stderr);
-  }
-  const answered = await eventually(async () => {
-    const { answered } = await call(bob, api.settings);
-    assert.equal(answered.count, 2);
-    return answered;
-  });
-  assert.equal(answered.last?.login, "owner");
-  assert.equal(answered.last?.name, "owner"); // the login if there's no profile name
-  assert.equal(answered.last?.text, "Who calls calcRefund()?");
-  assert.deepEqual((await call(world.owner, api.settings)).answered, {
-    count: 0,
-    last: null,
-  });
+    // When owner asks twice and bob's agent answers, it's counted for bob and the last question shows. It isn't counted for the asker.
+    for (const question of ["Should charge() add a retry?", "Who calls calcRefund()?"]) {
+      const asked = await world.cli("ask", "bob", question);
+      assert.equal(asked.code, 0, asked.stderr);
+    }
+    const answered = await eventually(async () => {
+      const { answered } = await call(bob, api.settings);
+      assert.equal(answered.count, 2);
+      return answered;
+    });
+    assert.equal(answered.last?.login, "owner");
+    assert.equal(answered.last?.name, "owner"); // the login if there's no profile name
+    assert.equal(answered.last?.text, "Who calls calcRefund()?");
+    assert.deepEqual((await call(world.owner, api.settings)).answered, {
+      count: 0,
+      last: null,
+    });
 
-  // Only my own switch changes, and it stays after reading again.
-  await call(bob, api.setAskSwitch, { on: false });
-  assert.equal((await call(bob, api.settings)).askSwitch, false);
-  assert.equal((await call(world.owner, api.settings)).askSwitch, true);
-});
+    // Only my own switch changes, and it stays after reading again.
+    await call(bob, api.setAskSwitch, { on: false });
+    assert.equal((await call(bob, api.settings)).askSwitch, false);
+    assert.equal((await call(world.owner, api.settings)).askSwitch, true);
+  },
+);
 
 test("settings read the repo's check command and my runner's merge run, follow turning the runner off and on or off at the runner, and can't be turned on or off from the web", {
+  ...winSkip(463),
   timeout: 60_000,
 }, async (t) => {
   const world = await startWorld({

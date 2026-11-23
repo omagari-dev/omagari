@@ -41,13 +41,22 @@ const FAKE_CLAUDE = executable("./fake-claude.ts");
 const FAKE_SERVICE = executable("./fake-service.ts");
 
 /** Puts a `name` command in the `bin` folder. Calling it runs a fake CLI script (`script`). */
-const shim = (bin: string, name: string, script: string) =>
-  writeFile(join(bin, name), `#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`, {
-    mode: 0o755,
-  });
+const shim = (bin: string, name: string, script: string, ...extra: string[]) =>
+  process.platform === "win32"
+    ? writeFile(
+        join(bin, `${name}.cmd`),
+        `@"${process.execPath}" "${script}" ${extra.join(" ")} %*\r\n`,
+      )
+    : writeFile(
+        join(bin, name),
+        `#!/bin/sh\nexec '${process.execPath}' '${script}' ${extra.join(" ")} "$@"\n`,
+        { mode: 0o755 },
+      );
 
 // The Git that the runner and CLI call also doesn't read the machine's Git config (global gitignore and so on).
-process.env.GIT_CONFIG_GLOBAL = devNull;
+// Git for Windows accepts /dev/null but not the \\.\nul that os.devNull gives.
+const gitNull = process.platform === "win32" ? "/dev/null" : devNull;
+process.env.GIT_CONFIG_GLOBAL = gitNull;
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 // Even when tests run inside Claude Code, the CLI doesn't think it is inside Claude Code (same as CI).
 delete process.env.CLAUDECODE;
@@ -176,7 +185,7 @@ export async function tempRepo(repo = REPO) {
   // The temp folder on macOS is a symlink. Use the real path so it matches the top-level folder Git reports.
   const folder = await realpath(await mkdtemp(join(tmpdir(), "omagari-")));
   const env = {
-    GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_GLOBAL: gitNull,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_AUTHOR_NAME: "Omagari Test",
     GIT_AUTHOR_EMAIL: "test@omagari.invalid",
@@ -699,7 +708,9 @@ export function fakeSandbox() {
       unavailable: async () => fake.unavailable,
       wrap: async (input) => {
         fake.calls.push(input);
-        return ["/bin/sh", "-c", input.command];
+        return process.platform === "win32"
+          ? [process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", input.command]
+          : ["/bin/sh", "-c", input.command];
       },
     },
   };
@@ -962,12 +973,7 @@ export async function startWorld(
   await mkdir(bin);
   await shim(bin, "claude", FAKE_CLAUDE);
   // `omagari setup` registers the background runner with launchd or systemd. Fakes stand in for both, and the plist goes to a temp home (ADR-0050).
-  for (const name of ["launchctl", "systemctl"])
-    await writeFile(
-      join(bin, name),
-      `#!/bin/sh\nexec '${process.execPath}' '${FAKE_SERVICE}' ${name} "$@"\n`,
-      { mode: 0o755 },
-    );
+  for (const name of ["launchctl", "systemctl"]) await shim(bin, name, FAKE_SERVICE, name);
   const home = join(data, "home");
   const serviceCalls = join(data, "service-calls.jsonl");
   const cliEnv = () => ({
@@ -1226,3 +1232,7 @@ export async function startWorld(
     },
   };
 }
+
+/** Test options that skip a test only on Windows, naming the stage 8 ticket (#463–#469) that makes it pass there. Nothing is skipped elsewhere. */
+export const winSkip = (ticket: number) =>
+  process.platform === "win32" ? { skip: `Windows needs #${ticket}` } : {};

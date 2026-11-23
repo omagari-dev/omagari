@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type Alert, api, call } from "@omagari/contract";
 import type { Sandbox } from "@omagari/runner";
-import { eventually, fakeSandbox, place, startWorld, writer } from "./harness.ts";
+import { eventually, fakeSandbox, place, startWorld, winSkip, writer } from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
 type As = { url: string; session: string };
@@ -149,6 +149,7 @@ async function receives(world: World, cwd: string, prefix: string) {
 }
 
 test("when a pair with a guessed indirect conflict settles, the user's runner merges the two works and runs the check command, and the verdict is attached to the alert and both mailboxes", {
+  ...winSkip(463),
   timeout: 150_000,
 }, async (t) => {
   const fake = fakeSandbox();
@@ -315,6 +316,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo "pay
 });
 
 test("with no check command, no usable sandbox, or lines that collide, it says not run with the reason; missing files are left out and noted; and below the full share level the output isn't uploaded", {
+  ...winSkip(463),
   timeout: 150_000,
 }, async (t) => {
   const fake = fakeSandbox();
@@ -385,6 +387,7 @@ test("with no check command, no usable sandbox, or lines that collide, it says n
 });
 
 test("a pair with only a direct conflict and the side that changed the definition aren't run, and a runner with merge runs turned off doesn't run either", {
+  ...winSkip(463),
   timeout: 60_000,
 }, async (t) => {
   const fake = fakeSandbox();
@@ -438,6 +441,7 @@ async function brokenMark(world: World, login: string, branch: string) {
 }
 
 test("when the merge breaks, the two works are run separately to sort it out: it's Confirmed only if both pass; on a pass the alert closes and doesn't stand again until the re-run verdict comes", {
+  ...winSkip(463),
   timeout: 240_000,
 }, async (t) => {
   const fake = fakeSandbox();
@@ -629,6 +633,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo brea
 });
 
 test("a verdict of the same content that another runner posted is on the server, so it isn't run", {
+  ...winSkip(463),
   timeout: 120_000,
 }, async (t) => {
   const world = await startWorld({ observeMs: 50 });

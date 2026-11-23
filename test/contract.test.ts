@@ -18,7 +18,15 @@ import {
 } from "@omagari/contract";
 import { startRunner } from "@omagari/runner";
 import { type WebSocket as ServerSocket, WebSocketServer } from "ws";
-import { eventually, fakeExecutor, REPO, startWorld, stubbed, tempRepo } from "./harness.ts";
+import {
+  eventually,
+  fakeExecutor,
+  REPO,
+  startWorld,
+  stubbed,
+  tempRepo,
+  winSkip,
+} from "./harness.ts";
 
 const frame = (fields: object) => JSON.stringify({ v: CONTRACT_VERSION, payload: {}, ...fields });
 const tooBigFrame = "x".repeat(MAX_FRAME_BYTES + 1);
@@ -103,81 +111,93 @@ async function fakeServer(
   };
 }
 
-test("a real server and a real runner connect over a temporary Git repo and exchange messages", async (t) => {
-  const world = await startWorld(); // the runner turns on only after getting welcome for hello
-  t.after(world.stop);
+test(
+  "a real server and a real runner connect over a temporary Git repo and exchange messages",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld(); // the runner turns on only after getting welcome for hello
+    t.after(world.stop);
 
-  assert.equal(await world.repo.git("rev-list", "--count", "HEAD"), "1");
-  assert.deepEqual(await call(world.server, api.health), {
-    contract: CONTRACT_VERSION,
-  });
-  assert.deepEqual(await world.agents(world.owner), { owner: "online" });
-});
+    assert.equal(await world.repo.git("rev-list", "--count", "HEAD"), "1");
+    assert.deepEqual(await call(world.server, api.health), {
+      contract: CONTRACT_VERSION,
+    });
+    assert.deepEqual(await world.agents(world.owner), { owner: "online" });
+  },
+);
 
-test("the server doesn't accept kinds, contents or keys that aren't in the contract", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
-  // A connection that didn't finish hello is refused and then closed, so each frame attaches anew.
-  const reply = async (sent: string) => (await rawRunner(t, world.server.url)).reply(sent);
-  const refusedWith = (code: string, re?: string) => ({
-    kind: "error",
-    payload: { code },
-    ...(re && { re }),
-  });
-
-  assert.partialDeepStrictEqual(
-    await reply(frame({ id: "a", kind: "run_command", payload: { command: "ls" } })),
-    refusedWith("unknown_kind", "a"),
-  );
-  assert.partialDeepStrictEqual(await reply("this isn't JSON"), refusedWith("invalid_message"));
-  assert.partialDeepStrictEqual(
-    await reply(frame({ id: "b", kind: "hello", payload: "the content isn't an object" })),
-    refusedWith("invalid_message", "b"),
-  );
-  assert.partialDeepStrictEqual(
-    await reply(
-      frame({
-        id: "c",
-        kind: "hello",
-        payload: { junk: "a key not in the contract" },
-      }),
-    ),
-    refusedWith("invalid_message", "c"),
-  );
-  assert.partialDeepStrictEqual(
-    await reply(frame({ id: "d", kind: "hello", junk: "a key not in the envelope" })),
-    refusedWith("invalid_message"),
-  );
-
-  // A connection that sent a message that wasn't accepted doesn't count as a runner. What is attached is the world's one runner.
-  assert.deepEqual(await world.agents(world.owner), { owner: "online" });
-});
-
-test("the server refuses a runner with a different contract version, sending its own version and contract version, and drops the connection", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
-  const { socket, reply } = await rawRunner(t, world.server.url);
-
-  // The server is up and a runner that hasn't been updated attaches.
-  const closed = once(socket, "close");
-  assert.partialDeepStrictEqual(
-    await reply(frame({ v: CONTRACT_VERSION - 1, id: "a", kind: "hello" })),
-    {
-      v: CONTRACT_VERSION,
+test(
+  "the server doesn't accept kinds, contents or keys that aren't in the contract",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    // A connection that didn't finish hello is refused and then closed, so each frame attaches anew.
+    const reply = async (sent: string) => (await rawRunner(t, world.server.url)).reply(sent);
+    const refusedWith = (code: string, re?: string) => ({
       kind: "error",
-      re: "a",
-      payload: {
-        code: "version_mismatch",
-        version: gitVersion(),
-        contract: CONTRACT_VERSION,
-      },
-    },
-  );
-  const [{ code }] = await closed;
-  assert.equal(code, 1008);
-});
+      payload: { code },
+      ...(re && { re }),
+    });
 
-test("the server doesn't read frames and bodies over the limit", async (t) => {
+    assert.partialDeepStrictEqual(
+      await reply(frame({ id: "a", kind: "run_command", payload: { command: "ls" } })),
+      refusedWith("unknown_kind", "a"),
+    );
+    assert.partialDeepStrictEqual(await reply("this isn't JSON"), refusedWith("invalid_message"));
+    assert.partialDeepStrictEqual(
+      await reply(frame({ id: "b", kind: "hello", payload: "the content isn't an object" })),
+      refusedWith("invalid_message", "b"),
+    );
+    assert.partialDeepStrictEqual(
+      await reply(
+        frame({
+          id: "c",
+          kind: "hello",
+          payload: { junk: "a key not in the contract" },
+        }),
+      ),
+      refusedWith("invalid_message", "c"),
+    );
+    assert.partialDeepStrictEqual(
+      await reply(frame({ id: "d", kind: "hello", junk: "a key not in the envelope" })),
+      refusedWith("invalid_message"),
+    );
+
+    // A connection that sent a message that wasn't accepted doesn't count as a runner. What is attached is the world's one runner.
+    assert.deepEqual(await world.agents(world.owner), { owner: "online" });
+  },
+);
+
+test(
+  "the server refuses a runner with a different contract version, sending its own version and contract version, and drops the connection",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    const { socket, reply } = await rawRunner(t, world.server.url);
+
+    // The server is up and a runner that hasn't been updated attaches.
+    const closed = once(socket, "close");
+    assert.partialDeepStrictEqual(
+      await reply(frame({ v: CONTRACT_VERSION - 1, id: "a", kind: "hello" })),
+      {
+        v: CONTRACT_VERSION,
+        kind: "error",
+        re: "a",
+        payload: {
+          code: "version_mismatch",
+          version: gitVersion(),
+          contract: CONTRACT_VERSION,
+        },
+      },
+    );
+    const [{ code }] = await closed;
+    assert.equal(code, 1008);
+  },
+);
+
+test("the server doesn't read frames and bodies over the limit", winSkip(463), async (t) => {
   const world = await startWorld();
   t.after(world.stop);
   const { socket } = await rawRunner(t, world.server.url);
@@ -197,16 +217,20 @@ test("the server doesn't read frames and bodies over the limit", async (t) => {
   });
 });
 
-test("the server answers a path that doesn't exist in the contract's error format", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
+test(
+  "the server answers a path that doesn't exist in the contract's error format",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
 
-  await assert.rejects(call(world.server, { ...api.health, path: "/api/nowhere" }), {
-    code: "not_found",
-  });
-});
+    await assert.rejects(call(world.server, { ...api.health, path: "/api/nowhere" }), {
+      code: "not_found",
+    });
+  },
+);
 
-test("a contract path accepts only a body that follows the contract", async (t) => {
+test("a contract path accepts only a body that follows the contract", winSkip(463), async (t) => {
   const world = await startWorld();
   t.after(world.stop);
 
@@ -226,211 +250,239 @@ test("a contract path accepts only a body that follows the contract", async (t) 
   });
 });
 
-test("unless opened separately, the server listens only inside this device", async (t) => {
-  const outside = Object.values(networkInterfaces())
-    .flat()
-    .find((address) => address?.family === "IPv4" && !address.internal);
-  if (!outside) return t.skip("there's no network interface facing outside");
-  const world = await startWorld();
-  t.after(world.stop);
+test(
+  "unless opened separately, the server listens only inside this device",
+  winSkip(463),
+  async (t) => {
+    const outside = Object.values(networkInterfaces())
+      .flat()
+      .find((address) => address?.family === "IPv4" && !address.internal);
+    if (!outside) return t.skip("there's no network interface facing outside");
+    const world = await startWorld();
+    t.after(world.stop);
 
-  const { port } = new URL(world.server.url);
-  await assert.rejects(fetch(`http://${outside.address}:${port}${api.health.path}`));
-});
+    const { port } = new URL(world.server.url);
+    await assert.rejects(fetch(`http://${outside.address}:${port}${api.health.path}`));
+  },
+);
 
-test("the runner takes only Q&A. It doesn't run a request not in the contract, a Q&A that widens tools, or a Q&A sent to an executor it doesn't run", async (t) => {
-  // Imitating a breached server: it answers hello properly, then sends a request not in the contract, a Q&A that widens tools, and a proper Q&A.
-  const server = await fakeServer(t, (socket, hello) => {
-    socket.send(
-      encode(serverToRunner, "welcome", { login: "owner", repo: REPO, shared: true }, hello.id),
-    );
-    socket.send(frame({ id: "x", kind: "run_command", payload: { command: "rm -rf ~" } }));
-    const ask = {
-      executor: "claude-code",
-      channel: { id: "c", name: "general" },
-      recent: [],
-    };
-    socket.send(
-      frame({
-        id: "y",
-        kind: "ask",
-        payload: { ...ask, message: "delete it", tools: ["Bash"] },
-      }),
-    );
-    socket.send(
-      frame({
-        id: "w",
-        kind: "ask",
-        payload: { ...ask, executor: "codex", message: "who are you" },
-      }),
-    );
-    socket.send(
-      frame({
-        id: "z",
-        kind: "ask",
-        payload: { ...ask, message: "read only" },
-      }),
-    );
-  });
-  // The answer is late so the runner's first observation (the checkCommand sent once per connection) arrives first. The server doesn't count that message.
-  const fake = fakeExecutor(async () => {
-    await setTimeout(500);
-    return "fake answer";
-  });
-  const runner = await startRunner({
-    ...server.runner,
-    executors: { "claude-code": fake.executor },
-  });
-  t.after(runner.stop);
-
-  await eventually(() => assert.equal(server.received.length, 4));
-  const [x, y, w, z] = server.received;
-  assert.partialDeepStrictEqual(x, {
-    kind: "error",
-    re: "x",
-    payload: { code: "unknown_kind" },
-  });
-  assert.partialDeepStrictEqual(y, {
-    kind: "error",
-    re: "y",
-    payload: { code: "invalid_message" },
-  });
-  // A Q&A sent to an executor this runner doesn't run isn't run.
-  assert.partialDeepStrictEqual(w, {
-    kind: "error",
-    re: "w",
-    payload: {
-      code: "invalid_message",
-      message: "This is an executor the runner doesn't run: codex",
-    },
-  });
-  assert.partialDeepStrictEqual(z, {
-    kind: "answer",
-    re: "z",
-    payload: { text: "fake answer" },
-  });
-  // What reached the executor is the one proper Q&A, and the tools and folder are what the runner decided.
-  assert.deepEqual(
-    fake.calls.map(({ message, tools, folder }) => ({
-      message,
-      tools,
-      folder,
-    })),
-    [
-      {
-        message: "read only",
-        tools: ["Read", "Grep", "Glob"],
-        folder: server.runner.folder,
-      },
-    ],
-  );
-});
-
-test("the runner recognizes a server with a different contract version and doesn't turn on", async (t) => {
-  const server = await fakeServer(t, (socket, hello) => {
-    socket.send(
-      frame({
-        v: CONTRACT_VERSION + 1,
-        id: "w",
-        re: hello.id,
-        kind: "welcome",
-      }),
-    );
-  });
-
-  await assert.rejects(startRunner(server.runner), {
-    code: "version_mismatch",
-  });
-  await server.closed;
-});
-
-test("when refused for a different contract version, the runner says what to update", async (t) => {
-  const advice = {
-    newer: `Pull \`${gitBranch()}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`,
-    older: "The server is older. Update the server (tell whoever runs it)",
-  };
-  for (const [contract, todo] of [
-    [CONTRACT_VERSION + 1, advice.newer],
-    [CONTRACT_VERSION - 1, advice.older],
-  ] as const) {
-    // A refusal from a server with a different contract version. This shape is fixed regardless of the contract version, so it is read even with keys added later.
+test(
+  "the runner takes only Q&A. It doesn't run a request not in the contract, a Q&A that widens tools, or a Q&A sent to an executor it doesn't run",
+  winSkip(463),
+  async (t) => {
+    // Imitating a breached server: it answers hello properly, then sends a request not in the contract, a Q&A that widens tools, and a proper Q&A.
     const server = await fakeServer(t, (socket, hello) => {
       socket.send(
-        JSON.stringify({
-          v: contract,
-          id: "e",
-          re: hello.id,
-          kind: "error",
-          payload: {
-            code: "version_mismatch",
-            message: `contract version differs: received ${CONTRACT_VERSION}, here ${contract}`,
-            version: "v0.3.0",
-            contract,
-            later: "a key added by a later contract",
-          },
+        encode(serverToRunner, "welcome", { login: "owner", repo: REPO, shared: true }, hello.id),
+      );
+      socket.send(frame({ id: "x", kind: "run_command", payload: { command: "rm -rf ~" } }));
+      const ask = {
+        executor: "claude-code",
+        channel: { id: "c", name: "general" },
+        recent: [],
+      };
+      socket.send(
+        frame({
+          id: "y",
+          kind: "ask",
+          payload: { ...ask, message: "delete it", tools: ["Bash"] },
         }),
       );
-      socket.close(1008, "version_mismatch");
+      socket.send(
+        frame({
+          id: "w",
+          kind: "ask",
+          payload: { ...ask, executor: "codex", message: "who are you" },
+        }),
+      );
+      socket.send(
+        frame({
+          id: "z",
+          kind: "ask",
+          payload: { ...ask, message: "read only" },
+        }),
+      );
+    });
+    // The answer is late so the runner's first observation (the checkCommand sent once per connection) arrives first. The server doesn't count that message.
+    const fake = fakeExecutor(async () => {
+      await setTimeout(500);
+      return "fake answer";
+    });
+    const runner = await startRunner({
+      ...server.runner,
+      executors: { "claude-code": fake.executor },
+    });
+    t.after(runner.stop);
+
+    await eventually(() => assert.equal(server.received.length, 4));
+    const [x, y, w, z] = server.received;
+    assert.partialDeepStrictEqual(x, {
+      kind: "error",
+      re: "x",
+      payload: { code: "unknown_kind" },
+    });
+    assert.partialDeepStrictEqual(y, {
+      kind: "error",
+      re: "y",
+      payload: { code: "invalid_message" },
+    });
+    // A Q&A sent to an executor this runner doesn't run isn't run.
+    assert.partialDeepStrictEqual(w, {
+      kind: "error",
+      re: "w",
+      payload: {
+        code: "invalid_message",
+        message: "This is an executor the runner doesn't run: codex",
+      },
+    });
+    assert.partialDeepStrictEqual(z, {
+      kind: "answer",
+      re: "z",
+      payload: { text: "fake answer" },
+    });
+    // What reached the executor is the one proper Q&A, and the tools and folder are what the runner decided.
+    assert.deepEqual(
+      fake.calls.map(({ message, tools, folder }) => ({
+        message,
+        tools,
+        folder,
+      })),
+      [
+        {
+          message: "read only",
+          tools: ["Read", "Grep", "Glob"],
+          folder: server.runner.folder,
+        },
+      ],
+    );
+  },
+);
+
+test(
+  "the runner recognizes a server with a different contract version and doesn't turn on",
+  winSkip(463),
+  async (t) => {
+    const server = await fakeServer(t, (socket, hello) => {
+      socket.send(
+        frame({
+          v: CONTRACT_VERSION + 1,
+          id: "w",
+          re: hello.id,
+          kind: "welcome",
+        }),
+      );
     });
 
     await assert.rejects(startRunner(server.runner), {
       code: "version_mismatch",
-      message: `The server is on v0.3.0, and this machine is on ${gitVersion()}. ${todo}`,
     });
     await server.closed;
-  }
-});
+  },
+);
 
-test("the runner closes the connection and doesn't turn on if the server refuses hello", async (t) => {
-  const server = await fakeServer(t, (socket, hello) => {
-    socket.send(
-      encode(serverToRunner, "error", { code: "internal", message: "not accepted" }, hello.id),
+test(
+  "when refused for a different contract version, the runner says what to update",
+  winSkip(463),
+  async (t) => {
+    const advice = {
+      newer: `Pull \`${gitBranch()}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`,
+      older: "The server is older. Update the server (tell whoever runs it)",
+    };
+    for (const [contract, todo] of [
+      [CONTRACT_VERSION + 1, advice.newer],
+      [CONTRACT_VERSION - 1, advice.older],
+    ] as const) {
+      // A refusal from a server with a different contract version. This shape is fixed regardless of the contract version, so it is read even with keys added later.
+      const server = await fakeServer(t, (socket, hello) => {
+        socket.send(
+          JSON.stringify({
+            v: contract,
+            id: "e",
+            re: hello.id,
+            kind: "error",
+            payload: {
+              code: "version_mismatch",
+              message: `contract version differs: received ${CONTRACT_VERSION}, here ${contract}`,
+              version: "v0.3.0",
+              contract,
+              later: "a key added by a later contract",
+            },
+          }),
+        );
+        socket.close(1008, "version_mismatch");
+      });
+
+      await assert.rejects(startRunner(server.runner), {
+        code: "version_mismatch",
+        message: `The server is on v0.3.0, and this machine is on ${gitVersion()}. ${todo}`,
+      });
+      await server.closed;
+    }
+  },
+);
+
+test(
+  "the runner closes the connection and doesn't turn on if the server refuses hello",
+  winSkip(463),
+  async (t) => {
+    const server = await fakeServer(t, (socket, hello) => {
+      socket.send(
+        encode(serverToRunner, "error", { code: "internal", message: "not accepted" }, hello.id),
+      );
+    });
+
+    await assert.rejects(startRunner(server.runner), {
+      code: "internal",
+      message: "not accepted",
+    });
+    await server.closed;
+  },
+);
+
+test(
+  "the runner doesn't wait forever for a server that doesn't answer hello",
+  winSkip(463),
+  async (t) => {
+    const server = await fakeServer(t, () => {});
+
+    await assert.rejects(
+      startRunner({ ...server.runner, welcomeTimeoutMs: 50 }),
+      /The server didn't answer/,
     );
-  });
-
-  await assert.rejects(startRunner(server.runner), {
-    code: "internal",
-    message: "not accepted",
-  });
-  await server.closed;
-});
-
-test("the runner doesn't wait forever for a server that doesn't answer hello", async (t) => {
-  const server = await fakeServer(t, () => {});
-
-  await assert.rejects(
-    startRunner({ ...server.runner, welcomeTimeoutMs: 50 }),
-    /The server didn't answer/,
-  );
-  await server.closed;
-});
+    await server.closed;
+  },
+);
 
 test("a kind not in the contract can't even be sent", () => {
   // @ts-expect-error if this line passes the type check, `npm run typecheck` fails.
   assert.throws(() => encode(runnerToServer, "run_command", {}));
 });
 
-test("the CLI and hooks are operated through the executable's input and output", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
+test(
+  "the CLI and hooks are operated through the executable's input and output",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
 
-  // The version is this checkout's git tag, not package.json (ADR-0019).
-  assert.deepEqual(await world.cli("--version"), {
-    code: 0,
-    stdout: `omagari ${gitVersion()} (contract ${CONTRACT_VERSION})\n`,
-    stderr: "",
-  });
-  // --help is a request, not a mistake: usage on stdout, exit 0.
-  const help = await world.cli("--help");
-  assert.equal(help.code, 0);
-  assert.match(help.stdout, /^Usage:/);
+    // The version is this checkout's git tag, not package.json (ADR-0019).
+    assert.deepEqual(await world.cli("--version"), {
+      code: 0,
+      stdout: `omagari ${gitVersion()} (contract ${CONTRACT_VERSION})\n`,
+      stderr: "",
+    });
+    // --help is a request, not a mistake: usage on stdout, exit 0.
+    const help = await world.cli("--help");
+    assert.equal(help.code, 0);
+    assert.match(help.stdout, /^Usage:/);
 
-  // A hook never blocks a tool call whatever it receives: it ends with 0 and puts in nothing.
-  const silent = { code: 0, stdout: "", stderr: "" };
-  assert.deepEqual(await world.hook("this isn't JSON"), silent);
-  // It ends by itself even if the agent doesn't close the input.
-  assert.deepEqual(await world.hook("", { keepStdinOpen: true }), silent);
-});
+    // A hook never blocks a tool call whatever it receives: it ends with 0 and puts in nothing.
+    const silent = { code: 0, stdout: "", stderr: "" };
+    assert.deepEqual(await world.hook("this isn't JSON"), silent);
+    // It ends by itself even if the agent doesn't close the input.
+    assert.deepEqual(await world.hook("", { keepStdinOpen: true }), silent);
+  },
+);
 
 /** A bare request that starts a login pretending to be the `client` address. It adds Fly-Client-IP like Fly's front end. */
 const startLogin = (url: string, client: string) =>
@@ -439,83 +491,103 @@ const startLogin = (url: string, client: string) =>
     headers: { "fly-client-ip": client },
   });
 
-test("on a server behind Fly, even if one address piles up unfinished logins all at once, only five are accepted, and it can't block other people's logins", async (t) => {
-  const world = await startWorld({ behindFly: true });
-  t.after(world.stop);
-  // GitHub answers slowly, so the requests overlap while waiting on each other.
-  const startDevice = world.github.github.startDevice;
-  world.github.github.startDevice = async () => {
-    await setTimeout(100);
-    return startDevice();
-  };
-  const statuses = await Promise.all(
-    Array.from({ length: 20 }, () =>
-      startLogin(world.server.url, "192.0.2.1").then((r) => r.status),
-    ),
-  );
-  assert.equal(statuses.filter((status) => status === 200).length, 5);
-  // Another person logs in.
-  world.github.grant("alice");
-  await world.login("alice");
-});
+test(
+  "on a server behind Fly, even if one address piles up unfinished logins all at once, only five are accepted, and it can't block other people's logins",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ behindFly: true });
+    t.after(world.stop);
+    // GitHub answers slowly, so the requests overlap while waiting on each other.
+    const startDevice = world.github.github.startDevice;
+    world.github.github.startDevice = async () => {
+      await setTimeout(100);
+      return startDevice();
+    };
+    const statuses = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        startLogin(world.server.url, "192.0.2.1").then((r) => r.status),
+      ),
+    );
+    assert.equal(statuses.filter((status) => status === 200).length, 5);
+    // Another person logs in.
+    world.github.grant("alice");
+    await world.login("alice");
+  },
+);
 
-test("a server not behind Fly doesn't trust Fly-Client-IP, so even with a changing header it counts by the connection's one address", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
-  for (let i = 1; i <= 5; i++)
-    assert.equal((await startLogin(world.server.url, `192.0.2.${i}`)).status, 200);
-  assert.equal((await startLogin(world.server.url, "192.0.2.6")).status, 500);
-});
+test(
+  "a server not behind Fly doesn't trust Fly-Client-IP, so even with a changing header it counts by the connection's one address",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
+    for (let i = 1; i <= 5; i++)
+      assert.equal((await startLogin(world.server.url, `192.0.2.${i}`)).status, 200);
+    assert.equal((await startLogin(world.server.url, "192.0.2.6")).status, 500);
+  },
+);
 
-test("a connection that didn't finish hello is dropped in time, and one that sends a big frame or a frame off the contract is dropped right away", async (t) => {
-  const world = await startWorld({ helloMs: 200 });
-  t.after(world.stop);
-  const open = async (path: string) => {
-    const socket = new WebSocket(world.server.url.replace("http", "ws") + path);
-    t.after(() => socket.close());
-    await once(socket, "open");
-    const closed = once(socket, "close");
-    return { socket, closed };
-  };
-  // A connection that sends nothing
-  for (const path of [RUNNER_SOCKET, "/api/live"]) {
-    const { closed } = await open(path);
-    await closed;
-  }
-  // A first frame bigger than hello
-  const big = await open(RUNNER_SOCKET);
-  big.socket.send("x".repeat(65 * 1024));
-  const [bigClose] = (await big.closed) as [CloseEvent];
-  assert.equal(bigClose.code, 1009);
-  // A first frame off the contract
-  const junk = await open(RUNNER_SOCKET);
-  junk.socket.send(frame({ id: "x", kind: "nope" }));
-  const [junkClose] = (await junk.closed) as [CloseEvent];
-  assert.equal(junkClose.code, 1008);
-  // A runner that finished hello stays attached as time passes.
-  await setTimeout(400);
-  assert.deepEqual(await world.agents(world.owner), { owner: "online" });
-});
+test(
+  "a connection that didn't finish hello is dropped in time, and one that sends a big frame or a frame off the contract is dropped right away",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ helloMs: 200 });
+    t.after(world.stop);
+    const open = async (path: string) => {
+      const socket = new WebSocket(world.server.url.replace("http", "ws") + path);
+      t.after(() => socket.close());
+      await once(socket, "open");
+      const closed = once(socket, "close");
+      return { socket, closed };
+    };
+    // A connection that sends nothing
+    for (const path of [RUNNER_SOCKET, "/api/live"]) {
+      const { closed } = await open(path);
+      await closed;
+    }
+    // A first frame bigger than hello
+    const big = await open(RUNNER_SOCKET);
+    big.socket.send("x".repeat(65 * 1024));
+    const [bigClose] = (await big.closed) as [CloseEvent];
+    assert.equal(bigClose.code, 1009);
+    // A first frame off the contract
+    const junk = await open(RUNNER_SOCKET);
+    junk.socket.send(frame({ id: "x", kind: "nope" }));
+    const [junkClose] = (await junk.closed) as [CloseEvent];
+    assert.equal(junkClose.code, 1008);
+    // A runner that finished hello stays attached as time passes.
+    await setTimeout(400);
+    assert.deepEqual(await world.agents(world.owner), { owner: "online" });
+  },
+);
 
-test("the server sends HSTS only when a Fly front end says the request came over HTTPS (ADR-0052)", async (t) => {
-  const world = await startWorld({ behindFly: true });
-  t.after(world.stop);
+test(
+  "the server sends HSTS only when a Fly front end says the request came over HTTPS (ADR-0052)",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld({ behindFly: true });
+    t.after(world.stop);
 
-  const plain = await fetch(world.server.url + api.health.path);
-  assert.equal(plain.headers.get("strict-transport-security"), null);
+    const plain = await fetch(world.server.url + api.health.path);
+    assert.equal(plain.headers.get("strict-transport-security"), null);
 
-  const secure = await fetch(world.server.url + api.health.path, {
-    headers: { "x-forwarded-proto": "https" },
-  });
-  assert.equal(secure.headers.get("strict-transport-security"), "max-age=31536000");
-});
+    const secure = await fetch(world.server.url + api.health.path, {
+      headers: { "x-forwarded-proto": "https" },
+    });
+    assert.equal(secure.headers.get("strict-transport-security"), "max-age=31536000");
+  },
+);
 
-test("off Fly, X-Forwarded-Proto can't turn HSTS on, since the server can't tell who set it", async (t) => {
-  const world = await startWorld();
-  t.after(world.stop);
+test(
+  "off Fly, X-Forwarded-Proto can't turn HSTS on, since the server can't tell who set it",
+  winSkip(463),
+  async (t) => {
+    const world = await startWorld();
+    t.after(world.stop);
 
-  const response = await fetch(world.server.url + api.health.path, {
-    headers: { "x-forwarded-proto": "https" },
-  });
-  assert.equal(response.headers.get("strict-transport-security"), null);
-});
+    const response = await fetch(world.server.url + api.health.path, {
+      headers: { "x-forwarded-proto": "https" },
+    });
+    assert.equal(response.headers.get("strict-transport-security"), null);
+  },
+);
