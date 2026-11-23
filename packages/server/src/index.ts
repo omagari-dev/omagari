@@ -1756,6 +1756,8 @@ export async function startServer(options: {
       mergeCheck: MergeCheckState;
       /** The member shared this repo (ADR-0049). Until then nothing it observes is taken. */
       shared: boolean;
+      /** The npm version from hello (ADR-0061). None for a runner run from a clone. */
+      version?: string;
     }
   >();
   /** Live web connections that finished hello, with each session's hash, member, and chosen repo. Closed when the session ends. */
@@ -1798,6 +1800,24 @@ export async function startServer(options: {
       )
         socket.send(frame);
     }
+  };
+  /** `update`s sent to runners (ADR-0061), by the sent message's id: whose and which connection. Only that connection's `error` with this `re` counts. */
+  const updatesSent = new Map<string, { login: string; socket: WSContext }>();
+  /** How each member's last `api.updateRunner` is going (`serverToWeb.runners`). Lost when the server stops. */
+  const updating = new Map<string, { state: "updating" } | { state: "failed"; message: string }>();
+  /** Tells `login`'s own web connections their runners' versions and how their update is going. Never goes to anyone else. */
+  const shareRunners = (login: string, socket?: WSContext) => {
+    const versions = [
+      ...new Set(
+        [...runners.values()].flatMap((r) => (r.login === login && r.version ? [r.version] : [])),
+      ),
+    ];
+    const frame = encode(serverToWeb, "runners", {
+      versions,
+      update: updating.get(login) ?? null,
+    });
+    if (socket) socket.send(frame);
+    else sendTo(login, frame);
   };
   /** Q&As sent to a runner and waiting for an answer. The key is the sent `ask`'s id. Lost when the server stops, and marked failed when it starts again. */
   const asks = new Map<
@@ -3680,6 +3700,27 @@ export async function startServer(options: {
     "access_requests",
   ];
 
+  // Only the caller's own runners, and the message names nothing to install (ADR-0061).
+  mount(app, api.updateRunner, (_, c) => {
+    const login = c.get("login") as string;
+    let sent = 0;
+    for (const [socket, runner] of runners) {
+      if (runner.login !== login || !runner.version || !open(socket, runner)) continue;
+      const frame = encode(serverToRunner, "update", {});
+      updatesSent.set((JSON.parse(frame) as { id: string }).id, { login, socket });
+      socket.send(frame);
+      sent++;
+    }
+    if (sent === 0)
+      throw new ContractFailure({
+        code: "runner_offline",
+        message: "None of your runners installed from npm is connected",
+      });
+    updating.set(login, { state: "updating" });
+    shareRunners(login);
+    return {};
+  });
+
   mount(app, api.deleteAccount, (_, c) => {
     const login = c.get("login") as string;
     const repos = reposOf(login);
@@ -5462,6 +5503,11 @@ export async function startServer(options: {
         greet(socket);
         if (isOperator(login))
           socket.send(encode(serverToWeb, "access", { requests: pendingAccess() }));
+        if (
+          updating.has(login) ||
+          [...runners.values()].some((r) => r.login === login && r.version)
+        )
+          shareRunners(login, socket);
         visit(login, workspace);
         shareMembers(socket);
       },
@@ -5493,7 +5539,8 @@ export async function startServer(options: {
         }
         const { message } = decoded;
         if (message.kind === "hello") {
-          const { session, repos, shareRepo, executors, choices, mergeCheck } = message.payload;
+          const { session, version, repos, shareRepo, executors, choices, mergeCheck } =
+            message.payload;
           const login = sessionLogin(session);
           if (!login) {
             return refuse(
@@ -5533,6 +5580,7 @@ export async function startServer(options: {
             choices,
             mergeCheck,
             shared: isShared,
+            version,
           });
           greet(socket);
           db.prepare("DELETE FROM offline WHERE repo = ? AND login = ?").run(repo, login);
@@ -5552,6 +5600,9 @@ export async function startServer(options: {
           shareRuns(repo, login, socket);
           dispatchQuestions(login); // Questions left while offline
           dispatchDebates(login); // Debates opened while offline
+          // A runner of theirs came back, so an update they asked for is over (on a new version, or the card asks again).
+          updating.delete(login);
+          shareRunners(login);
           return;
         }
         const runner = runners.get(socket);
@@ -5747,6 +5798,13 @@ export async function startServer(options: {
               question.executor,
             );
             shareMembers();
+          } else if (updatesSent.get(re)?.socket === socket) {
+            const { login } = updatesSent.get(re) as { login: string };
+            updatesSent.delete(re);
+            if (message.kind === "error") {
+              updating.set(login, { state: "failed", message: message.payload.message });
+              shareRunners(login);
+            }
           } else if (drafting.get(re)?.socket === socket) {
             if (message.kind === "drafted")
               settleDraft(re, { state: "drafted", ...message.payload });
@@ -5786,6 +5844,8 @@ export async function startServer(options: {
           );
           shareSituation();
         }
+        for (const [id, sent] of updatesSent) if (sent.socket === socket) updatesSent.delete(id);
+        if (runner && !stopped) shareRunners(runner.login);
         // Questions sent to the dropped runner stay, and are sent again when the member's runner reconnects.
         for (const [id, question] of questionsSent)
           if (question.socket === socket) questionsSent.delete(id);

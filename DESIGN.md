@@ -1970,6 +1970,10 @@ A first-time member's checklist (#433). @Pancheble picked board 122-AB on 2026-1
   - A folded "This is what it looks like when it works" (잘 돌아가면 이렇게 보여요): a status line card and an indirect conflict card.
   - **Phone** (833px and below, board 123): step 2 is "Do this on a computer" (이건 컴퓨터에서 해요), "Open app.omagari.org on your computer and pick up here.", and "Copy address".
 - **`app-guide-button`** At the bottom of the channel panel, right above the profile panel: "Getting started" and "1/4", a 4px progress bar, and 12px secondary "Next: Connect your computer". 1px hairline, `{rounded.md}`. The card and the button always show the same step.
+- **`app-update-card`** (#505, ADR-0061) Right above the profile panel (under `app-guide-button`), in the same frame, when one of my runners is older than the newest `omagari` on npm. Only the runner's owner sees it.
+  - "New version out" (새 버전이 있어요), then a row with 12px secondary "dev.57 → dev.60" and a small primary "Update now" (지금 업데이트) on the right.
+  - Pressed: "Updating…" (업데이트하는 중…), a moving 4px bar (still for reduced motion), and "Your runner restarts by itself." (러너가 알아서 다시 켜져요.). It goes away when the runner comes back on the new version.
+  - It couldn't, the runner is off, or it didn't come back in 3 minutes: "Couldn't update" (업데이트하지 못했어요), "Your runner is off." (러너가 꺼져 있어요.) when it's off, "Run this in a terminal instead." (대신 터미널에서 이걸 실행해 주세요.) and the install command with "Copy".
 - **Popup** (`{component.app-dialog}`, 560px wide). It opens only when the button is pressed; nothing pops up by itself.
   - Before connecting: "Welcome!" (환영해요!), a line on what four steps get you, the progress bar, "Next: Connect your computer · Two lines in a terminal, about 2 minutes", the "You need" line, and "Skip" (건너뛰기, quiet) / "Start" (시작하기).
   - After connecting: "Getting started", the bar, the "Connected" line, "Next: Share your repo" with what to do, and "Later" (나중에, quiet) / "Got it" (알겠어요).

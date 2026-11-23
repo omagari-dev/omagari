@@ -1093,6 +1093,40 @@ if (process.env.DEMO_SETUP === "new" || process.env.DEMO_SETUP === "connected") 
   fresh.close();
 }
 
+// DEMO_UPDATE=fail|hold: one more runner of mine, on an old npm version, so the "New version out" card shows (#505, ADR-0061).
+// It answers "Update now" by failing (fail: the card shows the command) or not at all (hold: it stays "Updating…").
+if (process.env.DEMO_UPDATE) {
+  const socket = new WebSocket(world.server.url.replace("http", "ws") + RUNNER_SOCKET);
+  await new Promise((open) => socket.addEventListener("open", open, { once: true }));
+  socket.addEventListener("message", ({ data }) => {
+    const decoded = decode(serverToRunner, data);
+    if (
+      "message" in decoded &&
+      decoded.message.kind === "update" &&
+      process.env.DEMO_UPDATE !== "hold"
+    )
+      socket.send(
+        encode(
+          runnerToServer,
+          "error",
+          { code: "internal", message: "`npm i -g omagari@next` failed: EACCES" },
+          decoded.message.id,
+        ),
+      );
+  });
+  socket.send(
+    encode(runnerToServer, "hello", {
+      session: world.owner.session,
+      version: "0.0.0-dev.57",
+      repos: [REPO],
+      shareRepo: false,
+      executors: ["claude-code"],
+      choices: {},
+      mergeCheck: "off",
+    }),
+  );
+}
+
 {
   fake.names.set("yuna", "Yuna Kang");
   const yuna = await world.login("yuna");

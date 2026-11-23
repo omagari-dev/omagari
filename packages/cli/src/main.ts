@@ -25,7 +25,7 @@ import {
   shareLevelsText,
   VERDICT_LABELS,
 } from "@omagari/contract";
-import { onPath } from "@omagari/contract/shim";
+import { execShim, onPath } from "@omagari/contract/shim";
 import { checkoutVersion, installedPackage } from "@omagari/contract/version";
 import {
   acceptedRemotes,
@@ -52,7 +52,7 @@ import { background } from "./background.ts";
 import { install, uninstall } from "./install.ts";
 import { register, unregister } from "./service.ts";
 import { chooseMergeDefault, confirmUnsandboxed, mergeCheckFor, registry } from "./unsandboxed.ts";
-import { restart, UPDATED, type UpdateRecord, update } from "./update.ts";
+import { restart, UPDATED, type UpdateRecord, update, updateNpm } from "./update.ts";
 
 /** First line of commands that show other people's text in quotes (status, impact). Same meaning as the hooks' notice. */
 const DATA_NOTE =
@@ -65,6 +65,9 @@ const DEBATE_PATHS = [
   ["human", "human"],
   ["expired", "expired"],
 ] as const;
+
+/** The owner's update request (ADR-0061) in flight. One background process runs it once, however many of its repos are asked. */
+let requested: Promise<string | undefined> | undefined;
 
 /** What `--merge-check` takes. Without a sandbox only on native Windows (ADR-0059). */
 const MERGE_CHECKS =
@@ -351,6 +354,15 @@ async function selfUpdate(
   const updated = await update();
   if ("todo" in updated)
     throw new Error(`${error.message}\nCould not update automatically. ${updated.todo}`);
+  return finishUpdate(updated, log, then);
+}
+
+/** Writes the update to the run log and restarts (doesn't return). */
+async function finishUpdate(
+  updated: Extract<Awaited<ReturnType<typeof update>>, { record: unknown }>,
+  log: string,
+  then: () => Promise<number>,
+): Promise<never> {
   const record: UpdateRecord = {
     at: new Date().toISOString(),
     kind: "update",
@@ -360,6 +372,34 @@ async function selfUpdate(
   await appendFile(log, `${JSON.stringify(record)}\n`);
   console.log(`Updated ${updateLabel(record)}. Restarting the runner`);
   process.exit(await then());
+}
+
+/**
+ * Updates on the owner's request (ADR-0061): reads the newest version of this install's own dist-tag from npm, and if it's newer,
+ * updates the way a newer contract does and restarts (doesn't return). Resolves to why it couldn't, or nothing if it's already current.
+ */
+function updateOnRequest(log: string, then: () => Promise<number>) {
+  requested ??= (async () => {
+    const installed = installedPackage();
+    if (!installed)
+      return "This runner runs from a clone. Run `git pull` and `npm ci`, then turn it back on";
+    let newest: string;
+    try {
+      newest = (await execShim("npm", ["view", `omagari@${installed.tag}`, "version"])).stdout
+        .toString()
+        .trim();
+    } catch (error) {
+      return `Couldn't ask npm for omagari@${installed.tag}: ${error instanceof Error ? error.message : error}`;
+    }
+    if (newest === installed.version) return undefined;
+    console.log(`Asked to update: omagari@${installed.tag} ${installed.version} → ${newest}`);
+    const updated = await updateNpm();
+    if ("todo" in updated) return updated.todo;
+    return finishUpdate(updated, log, then);
+  })().finally(() => {
+    requested = undefined;
+  });
+  return requested;
 }
 
 /** "dev from abc1234 to def5678" for a clone, "omagari@next from 0.0.0-dev.1 to 0.0.0-dev.2" for npm. */
@@ -393,8 +433,21 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
   // Before logging in and connecting, so before anything is sent, say what will be sent.
   console.log(observationNotice(share));
   const saved = (await readSessions())[server];
+  // The restarted runner needs this one's connection and socket closed first.
+  let stopRunner = async () => {};
   const start = async (session: string) =>
-    startRunner({ serverUrl: server, folder, session, share, mergeCheck });
+    startRunner({
+      serverUrl: server,
+      folder,
+      session,
+      share,
+      mergeCheck,
+      update: () =>
+        updateOnRequest(paths.log, async () => {
+          await stopRunner();
+          return restart();
+        }),
+    });
   const running = await start(saved ?? (await login()))
     .catch(async (error) => {
       // If the saved session has ended, log in once more.
@@ -404,6 +457,7 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
       return start(await login());
     })
     .catch((error) => selfUpdate(error, paths.log));
+  stopRunner = running.stop;
   // Connected fine. What this runner receives from now on is different from a rejection right after startup.
   delete process.env[UPDATED];
   console.log(`Runner started: ${running.login}'s agent, ${running.repo} ↔ ${running.folder}`);
@@ -433,6 +487,8 @@ async function startIn(folder: string) {
     share,
     mergeCheck,
     shareRepo: false,
+    // Like a newer contract: end, and launchd, systemd or Task Scheduler starts it again in the new version.
+    update: () => updateOnRequest(paths.log, async () => 1),
   }).catch((error) => {
     // The saved session ended (logged out, or GitHub sign-in expired). Only setup can sign in.
     if (error instanceof ContractFailure && error.code === "unauthorized")

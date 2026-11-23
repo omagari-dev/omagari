@@ -81,7 +81,9 @@ import {
   GuideDialog,
   LimitNotice,
   progressOf,
+  type RunnerUpdate,
   ShareNotice,
+  UpdateCard,
 } from "./connect.tsx";
 import { ChannelTitle, Conversation, type ReplyBody, type View } from "./conversation.tsx";
 import { DEBATE_STRIP, DebateDialog, DebateLog, DebateStrip, ProxyDialog } from "./debate.tsx";
@@ -108,6 +110,7 @@ import { browserAllows, type Notice, noticeFor } from "./notify.ts";
 import { ALL, placeIn, placeOf } from "./places.ts";
 import { ProfilePanel } from "./profile.tsx";
 import { type Opened, PeopleContext, ProfileCard, ProfileView } from "./profile-card.tsx";
+import { newestVersion, older } from "./runner-update.ts";
 import { Settings } from "./settings.tsx";
 import { setAppearance } from "./theme.ts";
 
@@ -264,6 +267,23 @@ export function Workspace({
   /** Has my runner ever connected, and which repos have I shared (#354). Read again on every connect and when the member list changes. */
   const [setup, setSetup] = useState({ connected: me.connected, shared: me.shared });
   const [shareFailed, setShareFailed] = useState(false);
+  /** My runners' npm versions and my update request (`runners` on the live connection, ADR-0061). */
+  const [runners, setRunners] = useState<{ versions: string[]; update: RunnerUpdate }>();
+  /** The newest version on npm, read by the browser every hour. Undefined until read or if npm can't be reached. */
+  const [newest, setNewest] = useState<string>();
+  useEffect(() => {
+    const read = () => void newestVersion().then(setNewest);
+    read();
+    const timer = setInterval(read, 60 * 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  /** My oldest runner older than npm's newest. Kept while it restarts, when it's briefly gone. */
+  const outdated = useRef<string>(undefined);
+  const oldest = newest
+    ? runners?.versions.filter((v) => older(v, newest)).sort((a, b) => (older(a, b) ? -1 : 1))[0]
+    : undefined;
+  if (oldest) outdated.current = oldest;
+  const updateShown = !!newest && !!outdated.current && (!!oldest || !!runners?.update);
   /** The "Getting started" popup is open. Only pressing the sidebar button opens it (#433). */
   const [guiding, setGuiding] = useState(false);
   /** All four steps just got done: "You're all set" shows until closed, and the guide is turned off for next time. */
@@ -744,7 +764,8 @@ export function Workspace({
         setLanguage(event.payload.language);
         setAppearance(event.payload.appearance);
         setPrefs(event.payload);
-      } else if (event.kind === "draft") setIncoming(event.payload);
+      } else if (event.kind === "runners") setRunners(event.payload);
+      else if (event.kind === "draft") setIncoming(event.payload);
       else if (event.kind === "channel") add(event.payload);
       else if (event.kind === "labels" && repos[0])
         setLabelsByRepo((all) => ({ ...all, [repos[0] as string]: event.payload }));
@@ -1035,6 +1056,20 @@ export function Workspace({
         setToAccess(false);
         setSettings(true);
       }}
+      updateCard={
+        updateShown &&
+        newest &&
+        outdated.current && (
+          <UpdateCard
+            from={outdated.current}
+            to={newest}
+            update={runners?.update ?? null}
+            onUpdate={async () => {
+              await call(server(session), api.updateRunner);
+            }}
+          />
+        )
+      }
       guideButton={
         guideShown && (
           <GuideButton
@@ -1852,6 +1887,7 @@ function ChannelPanel({
   onSettings,
   waiting,
   guideButton,
+  updateCard,
   onGuide,
   onPresence,
   onMessage,
@@ -1868,6 +1904,8 @@ function ChannelPanel({
   waiting?: number;
   /** "Getting started" above the profile panel, while it's on (#433). */
   guideButton: ReactNode;
+  /** "New version out" right above the profile panel, when one of my runners is older than npm's newest (#505). */
+  updateCard: ReactNode;
   /** Turns "Getting started" back on from the profile menu. Missing while it's on. */
   onGuide?: () => void;
   onPresence: (presence: ChosenPresence, duration?: PresenceDuration) => Promise<void>;
@@ -1879,6 +1917,7 @@ function ChannelPanel({
       {head}
       {children}
       {guideButton}
+      {updateCard}
       <ProfilePanel
         me={me}
         mine={mine}

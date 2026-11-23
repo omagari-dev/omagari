@@ -4,6 +4,8 @@ status: accepted
 
 # Publish to npm: `latest` from release tags, `next` from `dev`
 
+> Updated by ADR-0061 (2026-11-23): the runner also updates when its owner presses "Update now", still from its own dist-tag.
+
 Installing Omagari should take two lines, `npm i -g omagari` and `omagari setup` (#347). ADR-0019 had members clone the repo and run `main`, and said a move to npm would put the version in package.json and supersede it. Decided on 2026-11-19 by @Pancheble in the #347 grilling.
 
 - **One package, `omagari`, holds the CLI, the runner, and the hooks.** The name is free on npm (checked 2026-11-19). The server and the web stay out of it. Self-hosters keep running the server from a clone (`docs/server.md`).

@@ -1,9 +1,10 @@
-import { EXECUTOR_NAMES, type ExecutorId } from "@omagari/contract";
+import { ContractFailure, EXECUTOR_NAMES, type ExecutorId } from "@omagari/contract";
 import { Check, Copy, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { clearDemoNote, clearLimit, useDemoNote, useLimit } from "./api.ts";
 import { t } from "./i18n.ts";
 import { INSTALL_COMMAND } from "./install.ts";
+import { shortVersion } from "./runner-update.ts";
 
 const DOCS = "https://omagari.org";
 const TROUBLESHOOTING = `${DOCS}/setup#troubleshooting`;
@@ -418,5 +419,88 @@ export function DemoNotice() {
         </button>
       )}
     </div>
+  );
+}
+
+/** How my last update request is going (`serverToWeb.runners` `update`). */
+export type RunnerUpdate = { state: "updating" } | { state: "failed"; message: string } | null;
+
+/** No runner came back on a new version within this long: show the command (ADR-0061). */
+const UPDATE_WAIT_MS = 3 * 60_000;
+
+/**
+ * The new-version card above the profile panel (#505, ADR-0061), in `app-guide-button`'s style. "Update now" asks my runners through the server;
+ * it shows they're updating, and the command to copy if they couldn't, are off, or didn't come back in time.
+ */
+export function UpdateCard({
+  from,
+  to,
+  update,
+  onUpdate,
+}: {
+  from: string;
+  to: string;
+  update: RunnerUpdate;
+  onUpdate: () => Promise<void>;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [late, setLate] = useState(false);
+  const updating = asking || update?.state === "updating";
+  useEffect(() => {
+    if (!updating) return;
+    const timer = setTimeout(() => setLate(true), UPDATE_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [updating]);
+  const press = async () => {
+    setAsking(true);
+    setOffline(false);
+    setLate(false);
+    try {
+      await onUpdate();
+    } catch (error) {
+      const off = error instanceof ContractFailure && error.code === "runner_offline";
+      setOffline(off);
+      setLate(!off);
+    } finally {
+      setAsking(false);
+    }
+  };
+  if (offline || late || update?.state === "failed")
+    return (
+      <section className="update-card" aria-label={t.connect.update.failed} role="status">
+        <strong>{t.connect.update.failed}</strong>
+        {offline && <span className="update-card-line">{t.connect.update.offline}</span>}
+        <span className="update-card-line">{t.connect.update.command}</span>
+        <div className="connect-command">
+          <pre>
+            <code>{INSTALL_COMMAND}</code>
+          </pre>
+          <CopyButton text={INSTALL_COMMAND} label={t.connect.copy} name={INSTALL_COMMAND} />
+        </div>
+      </section>
+    );
+  if (updating)
+    return (
+      <section className="update-card" aria-label={t.connect.update.updating} role="status">
+        <strong>{t.connect.update.updating}</strong>
+        <span className="guide-bar update-card-bar" aria-hidden>
+          <i />
+        </span>
+        <span className="update-card-line">{t.connect.update.restarts}</span>
+      </section>
+    );
+  return (
+    <section className="update-card" aria-label={t.connect.update.title}>
+      <strong>{t.connect.update.title}</strong>
+      <span className="update-card-row">
+        <span className="update-card-line">
+          {t.connect.update.versions(shortVersion(from), shortVersion(to))}
+        </span>
+        <button type="button" className="button primary small" onClick={press}>
+          {t.connect.update.now}
+        </button>
+      </span>
+    </section>
   );
 }
