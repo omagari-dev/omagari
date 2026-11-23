@@ -6682,16 +6682,20 @@ button.person {
   margin: 0;
 }
 
-/* Phones (#451): the text takes the full width and the buttons go under it. */
+/* Phones (#451): the dot stays beside the text, which fills the rest of the row; the two buttons sit side by side under it, lined up with the text. */
 @media (max-width: 833px) {
   .connect.guide-done {
-    flex-direction: column;
+    flex-wrap: wrap;
     align-items: flex-start;
+    row-gap: 10px;
   }
 
   .connect.guide-done p {
-    flex: none;
-    align-self: stretch;
+    flex: 1 1 calc(100% - 33px);
+  }
+
+  .connect.guide-done button:first-of-type {
+    margin-left: 32px;
   }
 }
 
