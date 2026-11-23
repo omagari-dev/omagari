@@ -454,7 +454,7 @@ components:
     borderColor: "{colors.selected}"
     rounded: "{rounded.lg}"
     padding: 14px 8px 8px
-    width: 300px
+    width: 240px
   app-channel-header:
     textColor: "{colors.ink}"
     borderColor: "{colors.divider}"
@@ -521,16 +521,16 @@ components:
     fontWeight: "{typography.app-body-strong.fontWeight}"
     lineHeight: "{typography.app-body-strong.lineHeight}"
     rounded: "{rounded.md}"
-    padding: 6px 8px
+    padding: 4px
   app-member-row-open:
     backgroundColor: "{colors.selected}"
     rounded: "{rounded.md}"
   app-member-status:
     textColor: "{colors.ink}"
     fontFamily: "{typography.app-caption.fontFamily}"
-    fontSize: "{typography.app-caption.fontSize}"
+    fontSize: 12px
     fontWeight: "{typography.app-caption.fontWeight}"
-    lineHeight: "{typography.app-caption.lineHeight}"
+    lineHeight: 1.33
   app-work-line:
     textColor: "{colors.ink}"
     fontFamily: "{typography.app-caption.fontFamily}"
@@ -1231,7 +1231,7 @@ Apple's whitespace is the product's pedestal. Every tile begins with at least 64
 
 ### App frame
 
-- **Window**: the window background is `{colors.canvas}`, and the three panels sit inside it with 8px padding and 8px gaps. The Channels panel on the left is 240px, the conversation (the remaining width) is in the middle, and the right panel is 300px.
+- **Window**: the window background is `{colors.canvas}`, and the three panels sit inside it with 8px padding and 8px gaps. The Channels panel on the left is 240px, the conversation (the remaining width) is in the middle, and the right panel is also 240px.
 - **Floating panels**: the Channels panel and the right panel are `{component.app-side-panel}` and `{component.app-right-panel}`. They use a parchment background, `{rounded.lg}` 18px, and an inner 1px line (black 6%). The conversation isn't a panel; it sits directly on the window background.
 - **Only one right panel**: only one of the member list, My agent (DM), or a Post opened in the side panel (480px, "Conflict forum") is open at a time. The two buttons in the channel header bar open them, and pressing the same button again closes it. When it closes, the conversation gets wider.
 - **The Channels panel collapses** (834px and up): collapsing removes the panel from the layout, and the conversation widens to 8px from the window's left edge. While it's collapsed, you can peek at it from the window's left edge. It starts expanded. Details are in "Collapsing the Channels panel".
@@ -1473,10 +1473,10 @@ It opens when you press the emoji button on the status message. The emoji button
 #### Member list
 
 - Group titles are "Online — 3" and "Offline — 1" (`{component.app-section-title}`). Away and do not disturb go under online.
-- **`app-member-row`** The whole row is a button (`aria-haspopup="dialog"`), and pressing it opens that person's profile card to the left of the row (see "Profile card" below). Padding 6px 8px, `{rounded.md}`, `{colors.hover}` on hover, and the row with its card open is `{colors.selected}`. Rows don't expand. The work and agents that used to sit in the expanded row moved into the profile card and the full view (2026-11-19 @Pancheble, #291 drafts 103-B and 104-A).
-  - A 40px person avatar (see "Person avatar and name" above) with a 13px presence dot.
+- **`app-member-row`** The whole row is a button (`aria-haspopup="dialog"`), and pressing it opens that person's profile card to the left of the row (see "Profile card" below). Padding 4px, a 36px avatar, and an 8px gap, the same as `{component.app-profile-panel}` (the name is 15px/600 and the second line is 12px; 2026-11-23 @Pancheble, #459). `{rounded.md}`, `{colors.hover}` on hover, and the row with its card open is `{colors.selected}`. Rows don't expand. The work and agents that used to sit in the expanded row moved into the profile card and the full view (2026-11-19 @Pancheble, #291 drafts 103-B and 104-A).
+  - A 36px person avatar (see "Person avatar and name" above) with a 12px presence dot.
   - First line: the name at 15px/600. If it's your row, "me" (나) (12px secondary) follows the name.
-  - Second line (`{component.app-member-status}` 13px): the status message, then "· N works" (secondary text) next to it. If the message is long, only the message is cut and the work count always shows. If there's no status message, the presence (away, do not disturb, offline) goes there in secondary text, and if there's neither, just "N works". The work count counts only visible works: a work with no changes, no status line, and no claim is left out of both the profile and the count (#266). If there's no visible work, it says "No work" (작업 없음) (2026-11-19 @Pancheble, #268 draft 98-A). While that person's agent is answering a Q&A, "Answering" (답하는 중) goes before the work count (if there are several agents, "Codex answering" (Codex 답하는 중)) (PRD 17, 2026-11-18 @Pancheble, #257).
+  - Second line (`{component.app-member-status}` 12px): the status message, then "· N works" (secondary text) next to it. If the message is long, only the message is cut and the work count always shows. If there's no status message, the presence (away, do not disturb, offline) goes there in secondary text, and if there's neither, just "N works". The work count counts only visible works: a work with no changes, no status line, and no claim is left out of both the profile and the count (#266). If there's no visible work, it says "No work" (작업 없음) (2026-11-19 @Pancheble, #268 draft 98-A). While that person's agent is answering a Q&A, "Answering" (답하는 중) goes before the work count (if there are several agents, "Codex answering" (Codex 답하는 중)) (PRD 17, 2026-11-18 @Pancheble, #257).
   - No chevron.
 - A person who's offline gets a 50% faded avatar and a secondary-text-color name.
 

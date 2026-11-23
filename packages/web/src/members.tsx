@@ -107,7 +107,7 @@ function MemberRow({ member, me, selected }: { member: Member; me: boolean; sele
           open({ login: member.login, anchor: event.currentTarget, side: "left" })
         }
       >
-        <Avatar name={member.name} login={member.login} size={40} presence={member.presence} />
+        <Avatar name={member.name} login={member.login} size={36} presence={member.presence} />
         <span className="member-names">
           <strong>
             <span className="member-name">{personName(member.name, member.login)}</span>
