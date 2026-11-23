@@ -940,6 +940,7 @@ export async function startWorld(
     terms: options.terms,
     privacy: options.privacy,
     limits: options.limits,
+    unsafeFastDisk: true,
   };
   let server = await startServer(serverOptions).catch(async (error) => {
     await cleanup();

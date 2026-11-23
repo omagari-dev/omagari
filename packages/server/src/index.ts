@@ -625,6 +625,8 @@ export async function startServer(options: {
    * An unset one is no limit, so a server with none works as before.
    */
   limits?: Partial<Record<(typeof LIMITS)[number], number>>;
+  /** Skips fsync (`PRAGMA synchronous = OFF`). Only for tests: on Windows every fsync is slow and startup runs dozens of them. */
+  unsafeFastDisk?: boolean;
   /** Folder of the built web UI (`vite build`'s dist). If given, it's served from the same address as the API. In development it's not given and Vite is used. */
   webDir?: string;
 }) {
@@ -705,6 +707,7 @@ export async function startServer(options: {
   const db = new DatabaseSync(options.database ?? ":memory:");
   // Deleted rows are overwritten in the file, not just marked free (ADR-0054: deletion is real deletion).
   db.exec("PRAGMA secure_delete = ON");
+  if (options.unsafeFastDisk) db.exec("PRAGMA synchronous = OFF");
   // Sessions are kept only as hashes. The GitHub token never leaves the server.
   db.exec(`CREATE TABLE IF NOT EXISTS sessions (
     hash TEXT PRIMARY KEY,
