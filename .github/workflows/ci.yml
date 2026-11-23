@@ -39,7 +39,8 @@ jobs:
   # Windows에서도 타입 검사와 테스트를 돌린다. 브랜치 보호의 필수 검사로 걸어야 한다(ADR-0060).
   windows:
     runs-on: windows-latest
-    timeout-minutes: 20
+    # windows-latest에서는 프로세스 시작과 Git이 느려서 전체 테스트가 20분을 넘긴다.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

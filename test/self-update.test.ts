@@ -14,7 +14,7 @@ import {
 } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { promisify } from "node:util";
 import { CONTRACT_VERSION } from "@omagari/contract";
@@ -169,7 +169,7 @@ writeFileSync(pkg, readFileSync(pkg, "utf8").replace("0.0.0-dev.1", "0.0.0-dev.2
   const cliEnv = {
     OMAGARI_SERVER: url,
     XDG_CONFIG_HOME: join(dir, "config"),
-    PATH: `${bin}:${process.env.PATH}`,
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
   };
   const omagari = async (...args: string[]) => {
     const result = await exec(

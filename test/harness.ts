@@ -40,6 +40,16 @@ const FAKE_CODEX = executable("./fake-codex.ts");
 const FAKE_CLAUDE = executable("./fake-claude.ts");
 const FAKE_SERVICE = executable("./fake-service.ts");
 
+/**
+ * Removes a test's temporary folder. On Windows a folder can't go while a process still has it open, and a killed process lets go late,
+ * so there it tries for a while and then leaves the folder in the temp folder rather than failing a test that passed.
+ */
+const removeTemp = (folder: string) =>
+  rm(folder, { recursive: true, force: true, maxRetries: 10 }).catch((error) => {
+    if (process.platform !== "win32" || !["EBUSY", "EPERM", "ENOTEMPTY"].includes(error.code))
+      throw error;
+  });
+
 /** Puts a `name` command in the `bin` folder. Calling it runs a fake CLI script (`script`). */
 const shim = (bin: string, name: string, script: string, ...extra: string[]) =>
   process.platform === "win32"
@@ -173,7 +183,7 @@ export const writer = (folder: string) => async (path: string, content: string |
 /** Temp folder to hold worktrees linked from outside the repo. Removed when the test ends. Takes a name and returns the path inside it. */
 export async function place(t: { after: (fn: () => Promise<void>) => void }) {
   const folder = await realpath(await mkdtemp(join(tmpdir(), "omagari-worktrees-")));
-  t.after(() => rm(folder, { recursive: true, force: true, maxRetries: 10 }));
+  t.after(() => removeTemp(folder));
   return (name: string) => join(folder, name);
 }
 
@@ -205,7 +215,7 @@ export async function tempRepo(repo = REPO) {
   return {
     folder,
     git,
-    remove: () => rm(folder, { recursive: true, force: true, maxRetries: 10 }),
+    remove: () => removeTemp(folder),
   };
 }
 
@@ -786,7 +796,7 @@ async function fakeCli(
   callsEnv: string,
 ) {
   const bin = await realpath(await mkdtemp(join(tmpdir(), `omagari-${name}-`)));
-  t.after(() => rm(bin, { recursive: true, force: true, maxRetries: 10 }));
+  t.after(() => removeTemp(bin));
   await shim(bin, name, script);
   const calls = join(bin, "calls.jsonl");
   process.env.PATH = `${bin}${delimiter}${process.env.PATH}`;
@@ -884,8 +894,7 @@ export async function startWorld(
 ) {
   const repo = await tempRepo();
   const data = await mkdtemp(join(tmpdir(), "omagari-server-")); // the server's DB and the CLI's config
-  const cleanup = () =>
-    Promise.all([repo.remove(), rm(data, { recursive: true, force: true, maxRetries: 10 })]);
+  const cleanup = () => Promise.all([repo.remove(), removeTemp(data)]);
   const fake = fakeGitHub();
   options.setup?.(fake);
   const database = join(data, "omagari.db");

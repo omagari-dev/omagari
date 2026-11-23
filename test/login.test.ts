@@ -159,7 +159,8 @@ test("one command in the repo folder logs in and starts the runner. No GitHub to
 
   // If it stops, it is offline.
   const stopped = await runner.stop("SIGINT");
-  assert.equal(stopped.code, 0);
+  // Windows can't send SIGINT to another process, so there the kill ends it with no exit code.
+  assert.equal(stopped.code, process.platform === "win32" ? null : 0);
   await eventually(async () => assert.equal((await world.agents(world.owner)).alice, "offline"));
 
   // The server received the GitHub token, but the runner side (the output and files the CLI left) has none.
