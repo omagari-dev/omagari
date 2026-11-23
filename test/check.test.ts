@@ -68,8 +68,7 @@ test(
     assert.notEqual(call.folder, repo.folder);
     const temp = call.env.TMPDIR;
     assert.ok(temp);
-    // sandbox-runtime overrides TMPDIR to /tmp/claude when it wraps, so before the command the runner's temporary folder is restored.
-    assert.equal(call.command, `export TMPDIR='${temp}'; sh check.sh`);
+    assert.equal(call.command, "sh check.sh");
     // Unix sockets are opened and attached only under the temporary worktree and temporary folder (ADR-0037). The temporary folder is short, so socket paths in it don't exceed macOS's 104-byte limit.
     assert.deepEqual(call.policy.network, {
       allowedDomains: [],
@@ -492,42 +491,40 @@ const WSL_MOUNTS = [
   "drivers /usr/lib/wsl/drivers 9p ro 0 0",
 ].join("\n");
 
-test(
-  "it blocks reading the places where Windows drives are mounted in WSL2's mount list, and doesn't change the blocking on other machines",
-  winSkip(468),
-  async (t) => {
-    const repo = await tempRepo();
-    t.after(repo.remove);
-    await merge(repo, { ".omagari.json": config({ check: "true" }) });
-    const policyOf = async (mounts?: string) => {
-      const fake = fakeSandbox();
-      const result = await checkWork({
-        folder: repo.folder,
-        remote: "origin",
-        sandbox: fake.sandbox,
-        limits: CHECK_LIMITS,
-        mounts: async () => mounts,
-      });
-      assert.equal(result.verdict, "pass", result.reason);
-      return fake.calls[0]?.policy.filesystem;
-    };
-    const wsl = await policyOf(WSL_MOUNTS);
-    assert.deepEqual(wsl?.denyRead, [homedir(), "/mnt/c", "/win/d x"]);
-    // The temporary worktree is reopened even on top of a hidden place.
-    assert.ok(
-      wsl?.allowRead?.some((p) =>
-        String(typeof p === "string" ? p : p.path).includes("omagari-check-"),
-      ),
-    );
-    assert.deepEqual((await policyOf(undefined))?.denyRead, [homedir()]);
-  },
-);
+test("it blocks reading the places where Windows drives are mounted in WSL2's mount list, and doesn't change the blocking on other machines", async (t) => {
+  const repo = await tempRepo();
+  t.after(repo.remove);
+  await merge(repo, { ".omagari.json": config({ check: "exit 0" }) });
+  const policyOf = async (mounts?: string) => {
+    const fake = fakeSandbox();
+    const result = await checkWork({
+      folder: repo.folder,
+      remote: "origin",
+      sandbox: fake.sandbox,
+      limits: CHECK_LIMITS,
+      mounts: async () => mounts,
+    });
+    assert.equal(result.verdict, "pass", result.reason);
+    return fake.calls[0]?.policy.filesystem;
+  };
+  const wsl = await policyOf(WSL_MOUNTS);
+  assert.deepEqual(wsl?.denyRead, [homedir(), "/mnt/c", "/win/d x"]);
+  // The temporary worktree is reopened even on top of a hidden place.
+  assert.ok(
+    wsl?.allowRead?.some((p) =>
+      String(typeof p === "string" ? p : p.path).includes("omagari-check-"),
+    ),
+  );
+  assert.deepEqual((await policyOf(undefined))?.denyRead, [homedir()]);
+});
 
-test("on plain Windows, the reason for Couldn't run is the WSL2 guidance", async () => {
+test("on plain Windows with the switch off, the reason for Couldn't run names WSL2 and the switch", async () => {
   const platform = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "win32" });
   try {
-    assert.match((await osSandbox.unavailable()) ?? "", /start the runner inside WSL2/);
+    const reason = (await osSandbox.unavailable()) ?? "";
+    assert.match(reason, /start the runner inside WSL2/);
+    assert.match(reason, /omagari runner --merge-check unsandboxed/);
   } finally {
     Object.defineProperty(process, "platform", platform as PropertyDescriptor);
   }

@@ -181,6 +181,8 @@ export const en = {
       runOn: "It's on. It only runs inside the sandbox.",
       runOff: "It's off. Verdicts that other members' runners ran still show.",
       noSandbox: "This machine has no sandbox tool, so it doesn't run.",
+      runUnsandboxed: "It's on, without a sandbox. Teammates' code runs as your Windows account.",
+      unsandboxedBadge: "On, no sandbox",
       howToInstall: "How to install",
       runnerOff: "The runner is off.",
     },

@@ -110,7 +110,7 @@ The full idea is in [docs/omagari-v3.md](docs/omagari-v3.md). How it's built is 
 |---|---|
 | `omagari setup [<address>]` | Sign in, save the server address, put the hooks and the status line skill into this machine's agents, and register the background runner to start at login |
 | `omagari uninstall` | Remove the hooks and the skill (`--sign-out` also ends your session) |
-| `omagari runner` | Start the runner in a repo folder (`--share full\|declared\|intent` picks what you upload, `--merge-check on\|off`) |
+| `omagari runner` | Start the runner in a repo folder (`--share full\|declared\|intent` picks what you upload, `--merge-check on\|off`, or `unsandboxed` on native Windows) |
 | `omagari share on\|off` | Share this repo with your team once (it follows you to other machines), or stop sharing it. Until then your runner doesn't observe it |
 | `omagari runner check` | Run the check command once on your current work, in the sandbox |
 | `omagari runner ask <message>` / `runner log` | Ask this repo's runner session, or see what the runner ran |

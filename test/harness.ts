@@ -856,7 +856,7 @@ export async function startWorld(
     /** The quiet time the owner runner waits before a merge run. Shorten it to see it. */
     quietMs?: number;
     /** The owner runner's merge run. On by default. */
-    mergeCheck?: "on" | "off";
+    mergeCheck?: "on" | "off" | "unsandboxed";
     /** The built web screen folder the server serves at the same address as the API. */
     webDir?: string;
     /** Time to finish hello. Shorten it to see it cut off. */
@@ -1144,7 +1144,7 @@ export async function startWorld(
       }: {
         sandbox?: Sandbox;
         quietMs?: number;
-        mergeCheck?: "on" | "off";
+        mergeCheck?: "on" | "off" | "unsandboxed";
         /** The folder's remote repo. If not given, `REPO`. */
         repo?: string;
       } = {},
