@@ -430,7 +430,10 @@ svg.lucide {
   flex: 1;
   min-height: 0;
   margin-top: 16px;
+  /* Only up and down. The gutter is always reserved so an always-visible scrollbar sits beside the rows, not on them. */
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .section-title {
@@ -519,6 +522,8 @@ svg.lucide {
 /* Channel row (app-nav-item). 30px rows, 2px between rows. The selected channel gets a 6% background, name at 600, and only the icon in the accent color. */
 .nav-list {
   display: grid;
+  /* One column that can shrink. With the default `auto` column, a long no-wrap name widens the column past the panel and the list scrolls sideways. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   margin: 4px 0 0;
   padding: 0;
