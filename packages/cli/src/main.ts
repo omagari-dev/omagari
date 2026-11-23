@@ -49,7 +49,7 @@ import {
 } from "@omagari/runner";
 import { background } from "./background.ts";
 import { install, uninstall } from "./install.ts";
-import { register, unregister, unsupported } from "./service.ts";
+import { register, unregister } from "./service.ts";
 import { confirmUnsandboxed } from "./unsandboxed.ts";
 import { restart, UPDATED, type UpdateRecord, update } from "./update.ts";
 
@@ -112,7 +112,7 @@ const USAGE = `Usage:
                                 Show, for each past day (default 14), the number of members who joined and the number of Q&As
   omagari setup [<server address>]
                                 Sign in with GitHub, save the server address, install the session-start hook, pre-edit hook, and status line skill into this machine's agents (Claude Code, Codex),
-                                and register the background runner to start at login (launchd on macOS, systemd on Linux and WSL2)
+                                and register the background runner to start at login (launchd on macOS, systemd on Linux and WSL2, Task Scheduler on Windows)
                                 Without an address, uses the saved one, else https://app.omagari.org. Running it again changes nothing; a new address switches to it
   omagari uninstall [--sign-out]
                                 Remove the hooks, the status line skill, and the background runner. The saved session stays unless --sign-out
@@ -221,7 +221,6 @@ async function mailbox() {
 
 /** Saves the server address, signs in if this server has no session yet (or it ended), installs the hooks, and says what's left. */
 async function setup(address: string | undefined) {
-  if (process.platform === "win32") throw new Error(await unsupported());
   // A saved address wins over the default, so running `setup` again on a self-hosted machine doesn't switch it to the hosted server.
   const chosen = address ?? process.env.OMAGARI_SERVER ?? savedServer ?? DEFAULT_SERVER;
   server = chosen.replace(/\/+$/, "");
