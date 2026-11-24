@@ -98,7 +98,7 @@ Picked: A.
 
 ### Milestone and tickets
 
-New milestone "9 Error reports" with a `stage:9` label. The seven tickets below were accepted as proposed.
+New milestone "9 Error reports" with a `stage:9` label. PRD #522; @Pancheble accepted the seven tickets as proposed: #523 privacy text (a person approves) → #524 server keeps reports and shows operators → #525 runner reports → #526 personal settings → #527 CLI and hooks, #528 web and stuck waits → #529 hand check on real Windows.
 
 ## Sources
 

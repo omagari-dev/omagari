@@ -1,6 +1,6 @@
 # PRD: Error reports
 
-Milestone "9 Error reports". Decisions: ADR-0063, ADR-0064, `docs/error-reports-questions.md`.
+Milestone "9 Error reports", issue #522. Decisions: ADR-0063, ADR-0064, `docs/error-reports-questions.md`.
 
 ## Problem Statement
 
