@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { plist, task, unit } from "./service.ts";
+import { launcher, plist, task, unit } from "./service.ts";
 
 const service = {
   args: [
@@ -68,17 +68,32 @@ WantedBy=default.target
   );
 });
 
-test("the Windows task starts at logon, restarts on failure, and cmd.exe logs the runner's output", () => {
-  const xml = task({
-    args: ["C:\\n&n\\node.exe", "main.ts", "runner", "background"],
-    env: { PATH: "C:\\bin" },
-    log: "C:\\log",
-  });
-  assert.match(xml, /<LogonTrigger>/);
+test("the Windows task starts only for this account at its logon, restarts on failure, and runs the launcher", () => {
+  const xml = task("C:\\cfg\\omagari\\runner-launcher.cmd", "DESKTOP\\ana&co");
+  assert.match(
+    xml,
+    /<LogonTrigger><Enabled>true<\/Enabled><UserId>DESKTOP\\ana&amp;co<\/UserId><\/LogonTrigger>/,
+  );
   assert.match(xml, /<RestartOnFailure>/);
   assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
   assert.match(
     xml,
-    /set "PATH=C:\\bin"&amp;&amp; "C:\\n&amp;n\\node.exe" "main.ts" "runner" "background" &gt;&gt; "C:\\log" 2&gt;&amp;1/,
+    /<Command>cmd.exe<\/Command><Arguments>\/d \/s \/c "C:\\cfg\\omagari\\runner-launcher.cmd"<\/Arguments>/,
+  );
+});
+
+test("the Windows launcher sets each value once, with % doubled and quotes dropped, and appends the runner's output to the log", () => {
+  assert.equal(
+    launcher({
+      args: ["C:\\n&n\\node.exe", "main.ts", "runner", "background"],
+      env: { PATH: 'C:\\50%X%;"C:\\a b"' },
+      log: "C:\\log",
+    }),
+    [
+      "@echo off",
+      'set "PATH=C:\\50%%X%%;C:\\a b"',
+      '"C:\\n&n\\node.exe" "main.ts" "runner" "background" >> "C:\\log" 2>&1',
+      "",
+    ].join("\r\n"),
   );
 });

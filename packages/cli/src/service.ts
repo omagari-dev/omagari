@@ -1,7 +1,7 @@
 // Registers the background runner to start at login (ADR-0049): a launchd agent on macOS, a systemd user unit on Linux and WSL2, a Task Scheduler task on native Windows (ADR-0060).
 import { spawn } from "node:child_process";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
-import { homedir, release } from "node:os";
+import { homedir, hostname, release, userInfo } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execShim, onPath } from "@omagari/contract/shim";
@@ -101,19 +101,28 @@ export async function unregister() {
 }
 
 const taskFile = () => join(configHome(), "omagari", "runner-task.xml");
+const launcherFile = () => join(configHome(), "omagari", "runner-launcher.cmd");
+/** The task and the Run key run `cmd.exe /d /s /c "<launcher>"`. */
+const launchArgs = (file: string) => `/d /s /c "${file}"`;
+/** This account as Task Scheduler names it (DOMAIN\user), so the logon trigger starts the task for this person only. */
+const account = () => `${process.env.USERDOMAIN || hostname()}\\${userInfo().username}`;
 
-/** The command line the task and the Run key run: cmd.exe appends the runner's output to the log, which Task Scheduler can't do itself. */
-function windowsCommand({ args, env, log }: Service) {
-  const sets = Object.entries(env).map(([name, value]) => `set "${name}=${value}"&& `);
-  return `${sets.join("")}${args.map((a) => `"${a}"`).join(" ")} >> "${log}" 2>&1`;
+/** A value in a .cmd file: `%` is doubled, and quotes and line breaks are dropped (no path needs them). */
+const batch = (value: string) => value.replace(/[\r\n"]/g, "").replaceAll("%", "%%");
+
+/** The launcher file: sets the runner's environment and runs it, appending its output to the log, which Task Scheduler can't do itself. */
+export function launcher({ args, env, log }: Service) {
+  const sets = Object.entries(env).map(([name, value]) => `set "${name}=${batch(value)}"`);
+  const run = args.map((a) => `"${batch(a)}"`).join(" ");
+  return ["@echo off", ...sets, `${run} >> "${batch(log)}" 2>&1`, ""].join("\r\n");
 }
 
 /** The task: for this account at its logon, at the default (limited) run level, restarted when it fails, hidden. */
-export function task(service: Service) {
+export function task(launcherPath: string, user: string) {
   return [
     `<?xml version="1.0" encoding="UTF-16"?>`,
     `<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">`,
-    `  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>`,
+    `  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>${xml(user)}</UserId></LogonTrigger></Triggers>`,
     `  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>`,
     `  <Settings>`,
     `    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>`,
@@ -123,7 +132,7 @@ export function task(service: Service) {
     `    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>`,
     `    <Hidden>true</Hidden>`,
     `  </Settings>`,
-    `  <Actions Context="Author"><Exec><Command>cmd.exe</Command><Arguments>${xml(`/d /s /c "${windowsCommand(service)}"`)}</Arguments></Exec></Actions>`,
+    `  <Actions Context="Author"><Exec><Command>cmd.exe</Command><Arguments>${xml(launchArgs(launcherPath))}</Arguments></Exec></Actions>`,
     `</Task>`,
     "",
   ].join("\r\n");
@@ -133,20 +142,33 @@ async function registerWindows(service: Service) {
   await stopBackground().catch(() => {}); // the one an earlier setup started
   await mkdir(dirname(service.log), { recursive: true });
   const file = taskFile();
-  await writeFile(file, `\ufeff${task(service)}`, "utf16le");
+  const script = launcherFile();
+  await writeFile(script, launcher(service));
+  await writeFile(file, `\ufeff${task(script, account())}`, "utf16le");
   const created = await run("schtasks", "/Create", "/TN", TASK, "/XML", file, "/F").then(
     () => true,
     () => false,
   );
   if (created) {
+    await run("reg", "delete", RUN_KEY, "/v", TASK, "/f").catch(() => {}); // an earlier setup's Run key entry, so it doesn't start the runner twice
     await run("schtasks", "/Run", "/TN", TASK);
     return `Background runner: registered with Task Scheduler as ${TASK}. It starts at login, logs to ${service.log}, and watches the repos your agent sessions open.`;
   }
   // No rights to make a task: the per-user Run key needs none (ADR-0060).
   // ponytail: the Run key has no restart on crash; the runner restarting its own child comes with the hand check.
-  const command = `cmd.exe /d /s /c "${windowsCommand(service)}"`;
-  await run("reg", "add", RUN_KEY, "/v", TASK, "/t", "REG_SZ", "/d", command, "/f");
-  spawn(process.env.ComSpec || onPath("cmd.exe"), ["/d", "/s", "/c", windowsCommand(service)], {
+  await run(
+    "reg",
+    "add",
+    RUN_KEY,
+    "/v",
+    TASK,
+    "/t",
+    "REG_SZ",
+    "/d",
+    `cmd.exe ${launchArgs(script)}`,
+    "/f",
+  );
+  spawn(process.env.ComSpec || onPath("cmd.exe"), ["/d", "/s", "/c", `"${script}"`], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
@@ -159,11 +181,16 @@ async function unregisterWindows() {
   await stopBackground().catch(() => {});
   const ok = () => true;
   const no = () => false;
-  const task = await run("schtasks", "/Delete", "/TN", TASK, "/F").then(ok, no);
-  const key = !task && (await run("reg", "delete", RUN_KEY, "/v", TASK, "/f").then(ok, no));
+  // Both, not one or the other: an earlier setup may have used the Run key, and a later one the task.
+  const scheduled = await run("schtasks", "/Delete", "/TN", TASK, "/F").then(ok, no);
+  const key = await run("reg", "delete", RUN_KEY, "/v", TASK, "/f").then(ok, no);
   await rm(taskFile(), { force: true });
-  return task || key
-    ? `Background runner: stopped it and removed ${task ? "its Task Scheduler task" : "its Run key entry"}.`
+  await rm(launcherFile(), { force: true });
+  const removed = [scheduled && "its Task Scheduler task", key && "its Run key entry"].filter(
+    Boolean,
+  );
+  return removed.length
+    ? `Background runner: stopped it and removed ${removed.join(" and ")}.`
     : "Background runner: none was registered.";
 }
 
