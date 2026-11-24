@@ -19,6 +19,7 @@ function service(world: World) {
   const label = "com.github.omagari-dev.runner";
   if (process.platform === "win32") {
     const task = "omagari-runner";
+    const runKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     return {
       file: undefined,
       setup: [
@@ -31,9 +32,13 @@ function service(world: World) {
           join(world.config, "omagari", "runner-task.xml"),
           "/F",
         ],
+        ["reg", "delete", runKey, "/v", task, "/f"],
         ["schtasks", "/Run", "/TN", task],
       ],
-      uninstall: [["schtasks", "/Delete", "/TN", task, "/F"]],
+      uninstall: [
+        ["schtasks", "/Delete", "/TN", task, "/F"],
+        ["reg", "delete", runKey, "/v", task, "/f"],
+      ],
     };
   }
   if (process.platform === "darwin") {
