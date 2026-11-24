@@ -17,3 +17,10 @@ test("a signed-in member gets the server's GIPHY key for their browser", async (
   assert.equal((await call(world.owner, api.me)).giphy, "giphy-web-key");
   await assert.rejects(call(world.server, api.me), { code: "unauthorized" });
 });
+
+test("someone with no workspace gets no GIPHY key, even when the server has one", async (t) => {
+  const world = await startWorld({ giphy: "giphy-web-key", operators: ["Owner"] });
+  t.after(world.stop);
+  const carol = await world.login("carol");
+  assert.equal((await call(carol, api.me)).giphy, null);
+});

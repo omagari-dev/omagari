@@ -206,3 +206,10 @@ test("a new request reaches an operator's open web live, and never a non-operato
   await operator.close();
   await member.close();
 });
+
+test("a workspace member sees only their own accounts and the ones approved for them", async (t) => {
+  const world = await startWorld({ accept: [REPO, REPO3] });
+  t.after(world.stop);
+  // The owner's workspace is the first account; the other accepted account is not theirs, so it doesn't show.
+  assert.deepEqual((await call(world.owner, api.accounts)).accounts, [REPO.split("/")[0]]);
+});

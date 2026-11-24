@@ -67,9 +67,8 @@ test("visits and pending or denied requests older than the history window go; an
     { account: "fifth-team", login: "erin", state: "pending" },
   ]);
 
-  // The approved account is still accepted after the cleanup and the restart.
+  // The approved account is still there for carol after the cleanup and the restart (the owner's list shows only their own workspace).
   await eventually(async () =>
-    assert.ok((await call(world.owner, api.accounts)).accounts.includes(team)),
+    assert.deepEqual((await call(carol, api.accounts)).accounts, [team]),
   );
-  assert.deepEqual((await call(carol, api.accounts)).accounts, [team]);
 });

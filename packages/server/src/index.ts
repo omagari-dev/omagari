@@ -3489,7 +3489,8 @@ export async function startServer(options: {
       avatar: person?.avatar ?? null,
       repo: repos[0] ?? "",
       repos,
-      giphy: options.giphy ?? null,
+      // Only workspace members get the key (ADR-0056).
+      giphy: repos.length > 0 ? (options.giphy ?? null) : null,
       prefs: prefsOf(login),
       connected: !!db.prepare("SELECT 1 FROM runner_seen WHERE login = ?").get(login),
       shared: repos.filter((r) => shared(r, login)),
@@ -3769,11 +3770,11 @@ export async function startServer(options: {
         .all(login) as { account: string }[]
     ).map((row) => row.account);
 
-  // Someone without a workspace (signed in to request access) sees only the accounts approved for them, not who else is on this server.
+  // Each person sees only the accounts of their own workspaces and the ones approved for them, not who else is on this server.
   mount(app, api.accounts, (_, c) => {
     const login = c.get("login") as string;
-    const list = workspacesOf(login).length > 0 ? [...accounts] : approvedFor(login);
-    return { accounts: list.sort() };
+    const list = new Set([...workspacesOf(login), ...approvedFor(login)]);
+    return { accounts: [...list].sort() };
   });
 
   const accessStatus = (login: string) => ({
