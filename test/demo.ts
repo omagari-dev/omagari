@@ -1060,6 +1060,10 @@ fake.account(REPO3.split("/")[0] as string, { kind: "user", avatar: null });
 if (process.env.DEMO_AS !== "minsu") fake.grant("owner", REPO3);
 fake.grant("minsu", REPO3);
 await call(world.owner, api.addRepo, { repo: REPO2 });
+if (process.env.DEMO_AS !== "minsu") {
+  fake.admin("owner", REPO3);
+  await call(world.owner, api.addRepo, { repo: REPO3 });
+}
 const repoChannel = async (name: string, repo: string) =>
   (await call(world.owner, api.createChannel, { name, repo })).channel.id;
 await repoChannel("space-deploy", REPO);

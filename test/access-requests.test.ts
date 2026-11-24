@@ -216,3 +216,18 @@ test("a workspace member sees only their own accounts, and old names of repos th
   const own = REPO.split("/")[0] as string;
   assert.deepEqual((await call(world.owner, api.accounts)).accounts, ["old-owner", own].sort());
 });
+
+test("the web's sign-in lets a person with no workspace in, so the Access screen shows instead of the login wait (#520)", async (t) => {
+  const { loadEntry } = await import("../packages/web/src/enter.ts");
+  const world = await startWorld({ operators: ["Owner"], terms: TERMS, privacy: PRIVACY });
+  t.after(world.stop);
+  world.github.admin("carol", REPO3);
+  world.github.grant("carol", REPO3);
+  const carol = await world.login("carol");
+
+  const entry = await loadEntry(carol, undefined, "/login");
+  assert.deepEqual(entry.workspaces, []);
+  assert.equal(entry.workspace, "");
+  assert.equal(entry.me.login, "carol");
+  assert.equal(entry.target, "/");
+});
