@@ -5793,7 +5793,12 @@ export async function startServer(options: {
           const known = db.prepare("INSERT OR IGNORE INTO agents (login, executor) VALUES (?, ?)");
           for (const executor of executors) known.run(login, executor);
           socket.send(
-            encode(serverToRunner, "welcome", { login, repo, shared: isShared }, message.id),
+            encode(
+              serverToRunner,
+              "welcome",
+              { login, repo, shared: isShared, reportsOff: reportsOff() },
+              message.id,
+            ),
           );
           shareSituation(socket);
           shareInbox(socket);
@@ -5828,6 +5833,8 @@ export async function startServer(options: {
           const drop = db.prepare("DELETE FROM inbox WHERE id = ? AND login = ?");
           for (const id of message.payload.ids) drop.run(id, runner.login);
           shareInbox();
+        } else if (message.kind === "report") {
+          keepReport(message.payload, runner.login);
         } else if (message.kind === "working") {
           setWorkAgent(runner.repo, runner.login, message.payload.branch, message.payload.executor);
           shareMembers();

@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 74;
+export const CONTRACT_VERSION = 75;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -1275,6 +1275,36 @@ export const CheckReading = z.union([
 ]);
 export type CheckReading = z.infer<typeof CheckReading>;
 
+/** Most stack lines a report keeps (ADR-0063). */
+export const REPORT_STACK_LINES = 20;
+/** Longest error message a report keeps, in characters. Longer ones are cut. */
+export const REPORT_MESSAGE_CHARS = 1000;
+
+/**
+ * An error report (ADR-0063) or a stuck report (`kind: "stuck"`, ADR-0064) as a piece sends it. The sender masks it with `maskReport`, and the server masks it again before storing.
+ * It never holds file content, tokens, command arguments, repo or branch names, or environment variables.
+ */
+export const ErrorReport = z.strictObject({
+  piece: z.enum(["runner", "cli", "hook", "web", "server"]),
+  kind: z.enum(["error", "stuck"]),
+  /** The piece's version (`git describe --tags`, or the npm version). */
+  version: z.string().max(100),
+  /** `process.platform` and `process.arch`, or the browser's. */
+  os: z.string().max(50),
+  arch: z.string().max(50),
+  /** "Node 24.3.0", or the browser's name and version. */
+  runtime: z.string().max(100),
+  /** Which command or screen, and the step if it's a stuck wait ("background runner / observation", "sign-in / waiting for GitHub"). */
+  where: z.string().max(200),
+  /** The error's name ("TypeError"). A stuck report says "Stuck". */
+  name: z.string().max(100),
+  message: z.string().max(REPORT_MESSAGE_CHARS),
+  stack: z.array(z.string().max(500)).max(REPORT_STACK_LINES),
+  /** How many times it happened while waiting to be sent. */
+  count: z.number().int().min(1).max(10_000).default(1),
+});
+export type ErrorReport = z.output<typeof ErrorReport>;
+
 /** What the runner sends to the server. Later issues add their own messages here. */
 /** Max number of overlapping claims carried on one claim. The runner doesn't carry more. */
 export const MAX_OVERLAPS = 100;
@@ -1389,6 +1419,8 @@ export const runnerToServer = {
     model: z.string().optional(),
     effort: z.string().optional(),
   }),
+  /** An error report of the runner's own (ADR-0063), masked with `maskReport`. The server keeps it like `api.sendReport`. Not sent after a welcome with `reportsOff`. */
+  report: ErrorReport,
   error: ContractError,
 } satisfies Payloads;
 
@@ -1398,7 +1430,13 @@ export const serverToRunner = {
    * Accepts the hello. The runner is paired with this repo as this member's agent.
    * `shared` says whether this member shared the repo (repo sharing, ADR-0049). Until then the runner sends no observation, conflicts, check command, merge runs or agents, and the server drops them.
    */
-  welcome: z.strictObject({ login: z.string(), repo: z.string(), shared: z.boolean() }),
+  welcome: z.strictObject({
+    login: z.string(),
+    repo: z.string(),
+    shared: z.boolean(),
+    /** The operator refuses error reports (`api.refuseReports`, ADR-0063). The runner then sends none and clears the ones waiting on its machine. */
+    reportsOff: z.boolean(),
+  }),
   /** The member shared the repo or stopped sharing it (`api.share`). Sent to that member's runners in that repo. */
   sharing: z.strictObject({ shared: z.boolean() }),
   /**
@@ -1838,36 +1876,6 @@ export const OperatorOverview = z.strictObject({
   repos: z.strictObject({ total: z.number().int(), last7: z.number().int() }),
 });
 export type OperatorOverview = z.output<typeof OperatorOverview>;
-
-/** Most stack lines a report keeps (ADR-0063). */
-export const REPORT_STACK_LINES = 20;
-/** Longest error message a report keeps, in characters. Longer ones are cut. */
-export const REPORT_MESSAGE_CHARS = 1000;
-
-/**
- * An error report (ADR-0063) or a stuck report (`kind: "stuck"`, ADR-0064) as a piece sends it. The sender masks it with `maskReport`, and the server masks it again before storing.
- * It never holds file content, tokens, command arguments, repo or branch names, or environment variables.
- */
-export const ErrorReport = z.strictObject({
-  piece: z.enum(["runner", "cli", "hook", "web", "server"]),
-  kind: z.enum(["error", "stuck"]),
-  /** The piece's version (`git describe --tags`, or the npm version). */
-  version: z.string().max(100),
-  /** `process.platform` and `process.arch`, or the browser's. */
-  os: z.string().max(50),
-  arch: z.string().max(50),
-  /** "Node 24.3.0", or the browser's name and version. */
-  runtime: z.string().max(100),
-  /** Which command or screen, and the step if it's a stuck wait ("background runner / observation", "sign-in / waiting for GitHub"). */
-  where: z.string().max(200),
-  /** The error's name ("TypeError"). A stuck report says "Stuck". */
-  name: z.string().max(100),
-  message: z.string().max(REPORT_MESSAGE_CHARS),
-  stack: z.array(z.string().max(500)).max(REPORT_STACK_LINES),
-  /** How many times it happened while waiting to be sent. */
-  count: z.number().int().min(1).max(10_000).default(1),
-});
-export type ErrorReport = z.output<typeof ErrorReport>;
 
 /** A report as the operator sees it: one row per grouping key (`reportKey`), never the sender's login (ADR-0063). */
 export const ReportRow = ErrorReport.extend({

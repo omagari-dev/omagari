@@ -37,12 +37,15 @@ import {
   claimNews,
   claimOwner,
   claimPlace,
+  Expected,
+  errorReports,
   inboxNotice,
   observationNotice,
   quote,
   type RunRecord,
   readCheck,
   readRepo,
+  reportsDisabled,
   runnerPaths,
   ServerContractMismatch,
   startRunner,
@@ -137,6 +140,11 @@ const savedServer: string | undefined = JSON.parse(
   await readFile(configFile, "utf8").catch(() => "{}"),
 ).server;
 let server = process.env.OMAGARI_SERVER ?? savedServer ?? "http://127.0.0.1:3000";
+/** The runner's error reports, and the ones waiting to be sent (ADR-0063). */
+const reports = errorReports(join(configDir, "reports.json"));
+/** A crash of a runner process (an uncaught error or an unhandled rejection) is queued as a report before the process ends. It goes after the next welcome. */
+const reportCrashes = (where: string) =>
+  process.on("uncaughtExceptionMonitor", (error) => reports.add(server, error, where));
 
 const [command, sub, ...rest] = process.argv.slice(2);
 try {
@@ -149,9 +157,13 @@ try {
       args: process.argv.slice(3),
       options: { share: { type: "string" }, "merge-check": { type: "string" } },
     });
+    reportCrashes("runner");
     await runner(values.share, values["merge-check"]);
   } else if (command === "runner" && sub === "background" && rest.length === 0) {
-    await background(join(configDir, "folders.json"), startIn);
+    reportCrashes("background runner");
+    await background(join(configDir, "folders.json"), startIn, (error, where, folder) =>
+      reports.add(server, error, where, folder),
+    );
   } else if (command === "runner" && sub === "stop" && rest.length === 0) {
     await stopBackground().catch(() => {
       throw new Error("The background runner is off");
@@ -257,6 +269,12 @@ async function setup(address: string | undefined, mergeCheck: string | undefined
   for (const line of await install()) console.log(line);
   console.log(await register());
   if (mergeCheck === undefined) await chooseMergeDefault(registry(), undefined);
+  // On by default with a notice (ADR-0063). It names this server, the only place reports go.
+  console.log(
+    reportsDisabled()
+      ? "Error reports are off on this machine (OMAGARI_NO_ERROR_REPORTS or DO_NOT_TRACK)."
+      : `Errors from Omagari on this machine go to ${server}, masked, so whoever runs it can fix them. To turn them off, set OMAGARI_NO_ERROR_REPORTS=1 or DO_NOT_TRACK=1.`,
+  );
   console.log(
     `\nServer: ${server}\nOne step is left: Open /hooks in Codex and trust the two Omagari hooks (Codex has no way to trust them in advance).`,
   );
@@ -442,6 +460,7 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
       session,
       share,
       mergeCheck,
+      reports,
       update: () =>
         updateOnRequest(paths.log, async () => {
           await stopRunner();
@@ -478,7 +497,7 @@ async function startIn(folder: string) {
   const share = await remembered(paths.share, undefined, "Share level", ShareLevel.options);
   const mergeCheck = await mergeCheckFor(paths.mergeCheck, undefined);
   const session = (await readSessions())[server];
-  if (!session) throw new Error(`Not signed in to ${server}. Run omagari setup`);
+  if (!session) throw new Expected(`Not signed in to ${server}. Run omagari setup`);
   // Starting by itself isn't a yes to share the repo (ADR-0049).
   const started = await startRunner({
     serverUrl: server,
@@ -487,12 +506,13 @@ async function startIn(folder: string) {
     share,
     mergeCheck,
     shareRepo: false,
+    reports,
     // Like a newer contract: end, and launchd, systemd or Task Scheduler starts it again in the new version.
     update: () => updateOnRequest(paths.log, async () => 1),
   }).catch((error) => {
     // The saved session ended (logged out, or GitHub sign-in expired). Only setup can sign in.
     if (error instanceof ContractFailure && error.code === "unauthorized")
-      throw new Error(`${error.message}: run omagari setup`);
+      throw new Expected(`${error.message}: run omagari setup`);
     return npmSelfUpdate(error, paths.log);
   });
   // The background runner itself says why a runner stopped, so a failed update is only added to its message.

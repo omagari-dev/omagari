@@ -83,6 +83,7 @@ import {
 } from "./debate.ts";
 import { gitIn, nearby } from "./nearby.ts";
 import { observe, uses } from "./observe.ts";
+import type { ErrorReports } from "./reports.ts";
 import { named } from "./symbols.ts";
 
 export {
@@ -103,6 +104,7 @@ export {
   quote,
 } from "./inbox.ts";
 export { observationNotice } from "./observe.ts";
+export { type ErrorReports, errorReports, reportsDisabled } from "./reports.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -787,6 +789,9 @@ export async function readRepo(folder: string) {
 /** No GitHub remote of the folder is under an account the server accepts. Nothing about it was sent to the server (ADR-0049). */
 export class OutsideAccounts extends Error {}
 
+/** A failure about this machine or the network, not a bug in Omagari (the server can't be reached, a runner is already on). It's printed but never sent as an error report (ADR-0063). */
+export class Expected extends Error {}
+
 /**
  * The remotes under the accounts the server accepts (ADR-0049). It asks the server for the accounts and checks on this machine,
  * so the names of other remotes never leave it.
@@ -869,6 +874,8 @@ export async function startRunner(options: {
    * if it updated, the process restarts instead. Without it, the runner answers that it can't update itself.
    */
   update?: () => Promise<string | undefined>;
+  /** Where this runner's own errors go (ADR-0063). Without it, none are reported (tests that start a runner in their own process). */
+  reports?: ErrorReports;
 }) {
   const found = await readRepo(options.folder);
   const { folder } = found;
@@ -995,10 +1002,10 @@ export async function startRunner(options: {
   async function connect() {
     const current = new WebSocket(url);
     socket = current;
-    const welcomed = Promise.withResolvers<{ login: string; repo: string }>();
+    const welcomed = Promise.withResolvers<{ login: string; repo: string; reportsOff: boolean }>();
     let refusal: Error | undefined;
     const timer = setTimeout(
-      () => welcomed.reject(new Error(`The server didn't answer within ${timeoutMs}ms: ${url}`)),
+      () => welcomed.reject(new Expected(`The server didn't answer within ${timeoutMs}ms: ${url}`)),
       timeoutMs,
     );
 
@@ -1150,16 +1157,21 @@ export async function startRunner(options: {
       }
     });
     current.addEventListener("close", () =>
-      welcomed.reject(refusal ?? new Error(`Couldn't connect to the server: ${url}`)),
+      welcomed.reject(refusal ?? new Expected(`Couldn't connect to the server: ${url}`)),
     );
 
     try {
       const welcome = await welcomed.promise;
       live = current;
+      // Reports waiting on this machine go now, and later ones as they happen. A server that refuses them gets none, and the waiting ones are dropped.
+      const unreport = options.reports?.connected(options.serverUrl, welcome.reportsOff, (report) =>
+        current.send(encode(runnerToServer, "report", report)),
+      );
       // Tell the server what was handed over while the connection was down.
       if (delivered.size > 0)
         current.send(encode(runnerToServer, "delivered", { ids: [...delivered] }));
       current.addEventListener("close", ({ code }) => {
+        unreport?.();
         if (live === current) live = undefined;
         if (situation) situation.disconnectedAt ??= new Date().toISOString();
         if (code === 1008) end(refusal ?? new Error("The server refused the runner"));
@@ -1921,7 +1933,10 @@ export async function startRunner(options: {
         };
         await appendFile(paths.log, `${JSON.stringify(record)}\n`);
       })
-      .catch((error) => console.warn(`Merge run: ${error.message ?? error}`))
+      .catch((error) => {
+        console.warn(`Merge run: ${error.message ?? error}`);
+        options.reports?.add(options.serverUrl, error, "runner / merge run", folder);
+      })
       .finally(() => {
         running = undefined;
       });
@@ -1938,7 +1953,7 @@ export async function startRunner(options: {
     });
     probe.once("error", () => resolve(false));
   });
-  if (taken) throw new Error(`A runner for this repo is already on: ${folder}`);
+  if (taken) throw new Expected(`A runner for this repo is already on: ${folder}`);
   const local = createServer(serveLocal(replyToCli));
   await removeStaleSocket(paths.socket); // The socket a runner that was turned off left behind
   local.listen(paths.socket);
@@ -1981,6 +1996,8 @@ export async function startRunner(options: {
     const releasing = new Set<string>();
     while (!stopping.signal.aborted) {
       let problems: string[];
+      /** What threw, when reading failed outright. The report carries its stack. */
+      let failure: unknown;
       if (!shared) {
         // Not shared (ADR-0049): observe nothing. Once shared, everything is sent from the start.
         mine = [];
@@ -2088,7 +2105,10 @@ export async function startRunner(options: {
                   sentRuns.set(key, json);
                 }
               })
-              .catch((error) => console.warn(`Merge run: ${error.message ?? error}`))
+              .catch((error) => {
+                console.warn(`Merge run: ${error.message ?? error}`);
+                options.reports?.add(options.serverUrl, error, "runner / merge run", folder);
+              })
               .finally(() => {
                 merging = undefined;
               });
@@ -2096,10 +2116,13 @@ export async function startRunner(options: {
         }
       } catch (error) {
         problems = [error instanceof Error ? error.message : String(error)];
+        failure = error;
       }
       const message = problems.join("\n  ") || undefined;
-      if (message && message !== problem && !stopping.signal.aborted)
+      if (message && message !== problem && !stopping.signal.aborted) {
         console.warn(`Observation: ${message}`);
+        options.reports?.add(options.serverUrl, failure ?? message, "runner / observation", folder);
+      }
       problem = message;
       await sleep(options.observeMs ?? OBSERVE_MS, undefined, {
         signal: stopping.signal,

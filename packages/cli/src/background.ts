@@ -7,9 +7,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
+import { ContractFailure } from "@omagari/contract";
 import { onPath } from "@omagari/contract/shim";
 import {
   backgroundSocket,
+  Expected,
   OutsideAccounts,
   readRepo,
   removeStaleSocket,
@@ -30,14 +32,32 @@ type Running = { ended: Promise<unknown>; stop: () => Promise<void> | void };
  * Runs until SIGINT or SIGTERM, or, where there are no signals between processes (Windows, ADR-0060), until a "stop" request comes over its socket. `start` starts the runner of one repo folder; `foldersFile` keeps the folders it has seen.
  * A folder whose remotes aren't under the server's accounts is dropped without sending anything (ADR-0049). It comes back only if a session opens there again.
  */
-export async function background(foldersFile: string, start: (folder: string) => Promise<Running>) {
+export async function background(
+  foldersFile: string,
+  start: (folder: string) => Promise<Running>,
+  /** Sends an error report (ADR-0063). Refusals and unreachable servers aren't bugs, so they never get here. */
+  report: (error: Error, where: string, folder: string) => void = () => {},
+) {
   let folders: string[] = JSON.parse(await readFile(foldersFile, "utf8").catch(() => "[]"));
   /** Runners by their per-repo socket, which is one per repo whatever worktree the folder is. Pending starts are in it too. */
   const running = new Map<string, Promise<Running | undefined>>();
   /** The last line said about each repo, so a retry every minute doesn't repeat it. */
   const said = new Map<string, string>();
-  const say = (key: string, line: string) => {
-    if (said.get(key) !== line) console.log(line);
+  /** Says `line` unless it was the last thing said about `key`. A bug that comes with it is reported once with it too. */
+  const say = (
+    key: string,
+    line: string,
+    failed?: { error: unknown; where: string; folder: string },
+  ) => {
+    if (said.get(key) !== line) {
+      console.log(line);
+      const { error, where, folder } = failed ?? {};
+      if (
+        error instanceof Error &&
+        !(error instanceof ContractFailure || error instanceof Expected)
+      )
+        report(error, where ?? "", folder ?? "");
+    }
     said.set(key, line);
   };
   /** The folder each repo's runner was started in, and the other working trees of that repo seen last time it was alive (main working tree first). */
@@ -76,6 +96,7 @@ export async function background(foldersFile: string, start: (folder: string) =>
         say(
           socket,
           `The runner for ${folder} stopped${reason instanceof Error ? `: ${reason.message}` : ""}`,
+          { error: reason, where: "background runner / stopped", folder },
         );
       });
       return runner;
@@ -84,7 +105,12 @@ export async function background(foldersFile: string, start: (folder: string) =>
         say(socket, `Not watching ${folder}: its remotes aren't under the server's accounts`);
         folders = folders.filter((kept) => kept !== folder);
         await save();
-      } else say(socket, `Couldn't start the runner for ${folder}: ${error.message ?? error}`);
+      } else
+        say(socket, `Couldn't start the runner for ${folder}: ${error.message ?? error}`, {
+          error,
+          where: "background runner / start",
+          folder,
+        });
       return undefined;
     });
     running.set(socket, started);
