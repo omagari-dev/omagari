@@ -62,7 +62,9 @@ omagari setup --merge-check unsandboxed
 
 It shows the warning above, and turns it on only when you type `yes`. Anything else, Enter included, leaves it off. The answer becomes this machine's default. A repo with no choice of its own follows it.
 
-An agent can't turn it on. Without a terminal, nothing is saved, and the command tells you to run it yourself.
+An agent that can only write files can't turn it on. The yes isn't in any file, and without a terminal nothing is saved; the command tells you to run it yourself.
+
+An agent with its own shell is different. It runs as your Windows account, so it can change the same registry key, and nothing in Omagari stops it, the same as any other program you run as yourself. Keep that in mind when you let an agent run commands on this machine. The switch only keeps files from turning merge runs on.
 
 **How to turn it off.** `omagari setup --merge-check off` changes this machine's default at once. To change just one repo, run `omagari runner --merge-check off` in its folder. The web shows the state as **On, no sandbox** in **Settings → Merge run**.
 

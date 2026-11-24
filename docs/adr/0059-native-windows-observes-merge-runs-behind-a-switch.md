@@ -12,7 +12,7 @@ Today Windows works only inside WSL2 (ADR-0038), because native Windows has no s
   - **On**: merge runs run without a sandbox, as the person's Windows account. The person accepts the risk.
 - **The risk, said plainly** wherever the switch shows (setup, the CLI, the docs): teammates' unpushed code comes through the server and runs as your Windows account. If the server is broken into, or a teammate's test is malicious, it can read your SSH keys, tokens and browser cookies (ADR-0033).
 - **`omagari setup` asks on Windows.** It shows what on and off do and the risk, and turns it on only when the person types `yes` in a terminal. When an agent ran setup (no terminal), it stays off, and setup says how to turn it on in a terminal. People who try Omagari often wonder why merge runs don't happen, so the choice is part of the first setup instead of buried in the docs.
-- **Only a person turns it on.** Turning it on, in setup or with `omagari runner --merge-check unsandboxed`, needs a typed `yes` in a terminal and is refused otherwise. An agent, or a prompt injected into one, can't turn it on. Anyone can turn it off.
+- **Only a person turns it on.** Turning it on, in setup or with `omagari runner --merge-check unsandboxed`, needs a typed `yes` in a terminal and is refused otherwise. An agent that can only write files, or a prompt injected into one, can't turn it on. An agent with its own shell runs as the same Windows user, so it can still change the same registry key or answer the prompt, and nothing in Omagari stops it, just as nothing stops it from running any other program as you. The switch keeps files from turning it on; it isn't a lock against programs you run. Anyone can turn it off.
   - The yes is kept in the Windows registry under the current user (`HKCU\Software\Omagari\MergeRuns`), never in a file, so writing files can't turn it on. A repo's own file only holds on or off (#493).
 - **Setup's answer is this machine's default; each repo can differ.** A repo starts with the machine's default. `--merge-check off|on|unsandboxed` in a repo folder changes that repo, as today. `omagari setup --merge-check unsandboxed|off` changes the default. Running `setup` again keeps the earlier answer and doesn't ask again.
 - **The web shows it, never changes it.** Settings → Merge run shows "on, without a sandbox". The server still can't decide what runs on a member's machine (ADR-0033).
@@ -35,6 +35,7 @@ The rest of ADR-0033 stays: the check command comes from the repo file, never th
 ## Consequences
 
 - Amends ADR-0033: there is now one path that runs without a sandbox, on native Windows, only when the person turned it on.
+- The switch stops agents that can only write files, and prompts injected into them. It doesn't stop an agent with a shell as the same Windows user: that agent can reach the registry key and the prompt just as the person can. The docs say so, and don't promise more.
 - Supersedes ADR-0038's native Windows row ("doesn't run, use WSL2"). WSL2 stays the way to get sandboxed merge runs on Windows.
 - The contract's merge-run state gains "on, without a sandbox", so the web can show it.
 - When #168 finds a Windows sandbox that keeps ADR-0033's blocks, merge runs on Windows go back to sandboxed only, and this switch goes away.
