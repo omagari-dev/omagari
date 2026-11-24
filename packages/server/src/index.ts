@@ -1,7 +1,8 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt } from "node:crypto";
 import { once } from "node:events";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
+import { arch, homedir, platform } from "node:os";
 import { relative } from "node:path";
 import { basename } from "node:path/posix";
 import { DatabaseSync } from "node:sqlite";
@@ -41,6 +42,7 @@ import {
   DISCUSS_LABELS,
   type Draft,
   decode,
+  type ErrorReport,
   EVIDENCE_LABELS,
   EVIDENCE_MARKS,
   EXECUTOR_NAMES,
@@ -63,6 +65,7 @@ import {
   type MemberView,
   type MergeCheckState,
   type Message,
+  maskReport,
   type ObservedFile,
   type PendingAccess,
   type Post,
@@ -75,8 +78,10 @@ import {
   REPO_HEADER,
   type Reaction,
   type ReplyOf,
+  type ReportRow,
   RUNNER_SOCKET,
   RunVerdict,
+  reportKey,
   runnerToServer,
   type ShareLevel,
   type Stance,
@@ -131,6 +136,8 @@ const FORGET_MS = 7 * 24 * 60 * 60_000;
 const CONTENT_MS = 30 * 24 * 60 * 60_000;
 /** How long daily visits and pending or denied access requests are kept (ADR-0054, privacy policy: 12 months). Approved requests stay: they keep the account accepted after a restart. */
 const HISTORY_MS = 365 * 24 * 60 * 60_000;
+/** New error report rows one sender can start in an hour; past it they're dropped (ADR-0063). */
+const REPORTS_PER_HOUR = 20;
 /** Time zone that cuts the metrics day. The building team's day (ADR-0018). Seoul has no daylight saving, so a day is always 24 hours. */
 const TIME_ZONE = "Asia/Seoul";
 const DAY_MS = 24 * 60 * 60_000;
@@ -604,7 +611,7 @@ export async function startServer(options: {
   heartbeatMs?: number;
   followMs?: number;
   forgetMs?: number;
-  /** How long changed-file content and debate patches stay once unchanged. Default 30 days (`CONTENT_MS`). Tests shorten it. Swept every `followMs`. */
+  /** How long changed-file content and debate patches stay once unchanged, and error reports after they last happened. Default 30 days (`CONTENT_MS`). Tests shorten it. Swept every `followMs`. */
   contentMs?: number;
   /** How long daily visits and pending or denied access requests are kept. Default 12 months (`HISTORY_MS`). Tests shorten it. Swept every `followMs`. */
   historyMs?: number;
@@ -616,7 +623,7 @@ export async function startServer(options: {
   publicUrl?: string;
   /** Where people can get this server's source (AGPL section 13). If not given, Omagari's own repo. Shown in the settings window. */
   sourceUrl?: string;
-  /** Length of one hour in a decision PR's objection window. By default it's really one hour. Tests shorten it. Whether the window closed is checked every `followMs`. */
+  /** Length of one hour in a decision PR's objection window and in the error report limit. By default it's really one hour. Tests shorten it. Whether the window closed is checked every `followMs`. */
   hourMs?: number;
   /** Number of debate rounds. Default is `DEBATE_ROUNDS` (a blinded first round and two rebuttal rounds) and it can be reduced. */
   debateRounds?: number;
@@ -1109,6 +1116,60 @@ export async function startServer(options: {
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   ) STRICT`);
+  // Error reports (ADR-0063): one row per grouping key, masked. `login` started the row (NULL for the server's own errors); it counts toward the hourly limit and the operator never sees it.
+  // `report` is the contract's ErrorReport JSON. A row goes `contentMs` (30 days) after `last`.
+  db.exec(`CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    login TEXT,
+    report TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    first INTEGER NOT NULL,
+    last INTEGER NOT NULL
+  ) STRICT`);
+  /** The operator refuses error reports for the whole server (ADR-0063). */
+  const reportsOff = () => !!db.prepare("SELECT 1 FROM settings WHERE key = 'reports off'").get();
+  /**
+   * Keeps a report, masked again: adds to the row with the same key, or starts one unless `login` started `REPORTS_PER_HOUR` in the last hour (then it's dropped without a word).
+   * Nothing is kept while reports are refused.
+   */
+  const keepReport = (sent: ErrorReport, login: string | null) => {
+    if (reportsOff()) return;
+    const report = maskReport(sent);
+    const key = reportKey(report);
+    const now = Date.now();
+    const known = db
+      .prepare("UPDATE reports SET count = count + ?, last = ?, report = ? WHERE key = ?")
+      .run(report.count, now, JSON.stringify({ ...report, count: 1 }), key).changes;
+    if (known) return;
+    const started = db
+      .prepare("SELECT COUNT(*) AS n FROM reports WHERE login IS ? AND first > ?")
+      .get(login, now - (options.hourMs ?? 3_600_000)) as { n: number };
+    if (started.n >= REPORTS_PER_HOUR) return;
+    db.prepare(
+      "INSERT INTO reports (key, login, report, count, first, last) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(key, login, JSON.stringify({ ...report, count: 1 }), report.count, now, now);
+  };
+  /** Every row, last seen first, as the operator sees it: no login. */
+  const reportRows = (): ReportRow[] =>
+    (
+      db
+        .prepare("SELECT id, report, count, first, last FROM reports ORDER BY last DESC, id DESC")
+        .all() as {
+        id: number;
+        report: string;
+        count: number;
+        first: number;
+        last: number;
+      }[]
+    ).map((row) => ({
+      ...(JSON.parse(row.report) as ErrorReport),
+      id: row.id,
+      count: row.count,
+      first: new Date(row.first).toISOString(),
+      last: new Date(row.last).toISOString(),
+    }));
+
   // Q&As. The asker (`login`) is that agent's owner. If private, only that person sees it; if public, one line stands in messages and everyone sees it.
   // `answer` is the contract's Qa.answer (JSON) and is NULL while waiting for an answer. `settled` is when the answer or failure was written (ms).
   db.exec(`CREATE TABLE IF NOT EXISTS qas (
@@ -3245,10 +3306,33 @@ export async function startServer(options: {
   /** The address the server listens on. Set after it starts. */
   let url = "";
 
-  const app = createApp((authorization) => {
-    const session = bearer(authorization);
-    return session && sessionLogin(session);
-  });
+  const app = createApp(
+    (authorization) => {
+      const session = bearer(authorization);
+      return session && sessionLogin(session);
+    },
+    // The server's own unexpected errors go in the same list (ADR-0063).
+    (error, c) =>
+      keepReport(
+        {
+          piece: "server",
+          kind: "error",
+          version,
+          os: platform(),
+          arch: arch(),
+          runtime: `Node ${process.versions.node}`,
+          where: `${c.req.method} ${c.req.path}`,
+          name: error.name,
+          message: error.message,
+          stack: (error.stack ?? "")
+            .split("\n")
+            .slice(1)
+            .map((line) => line.trim()),
+          count: 1,
+        },
+        null,
+      ),
+  );
 
   // HSTS (ADR-0052). Fly ends TLS at its front end and sets X-Forwarded-Proto, so trust it only on Fly, the same as Fly-Client-IP. Elsewhere the server only sees plain HTTP.
   app.use(async (c, next) => {
@@ -3997,6 +4081,30 @@ export async function startServer(options: {
     if (approve) accounts.add(row.account);
     tellOperators();
     return { requests: pendingAccess() };
+  });
+
+  mount(app, api.sendReport, (report, c) => {
+    keepReport(report, c.get("login") as string);
+    return { off: reportsOff() };
+  });
+
+  mount(app, api.errorReports, (_, c) => {
+    mustOperate(c.get("login") as string);
+    return { reports: reportRows(), off: reportsOff() };
+  });
+
+  mount(app, api.resolveReport, ({ id }, c) => {
+    mustOperate(c.get("login") as string);
+    db.prepare("DELETE FROM reports WHERE id = ?").run(id);
+    return { reports: reportRows(), off: reportsOff() };
+  });
+
+  mount(app, api.refuseReports, ({ off }, c) => {
+    mustOperate(c.get("login") as string);
+    if (off)
+      db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('reports off', '1')").run();
+    else db.prepare("DELETE FROM settings WHERE key = 'reports off'").run();
+    return { off };
   });
 
   mount(app, api.share, ({ on }, c) => {
@@ -6748,6 +6856,8 @@ export async function startServer(options: {
         now - history,
       );
       db.prepare("DELETE FROM inbox WHERE at <= ?").run(now - inboxMs);
+      // Error reports go 30 days after they last happened, like changed-file content (ADR-0063, ADR-0054).
+      db.prepare("DELETE FROM reports WHERE last < ?").run(now - (options.contentMs ?? CONTENT_MS));
       db.prepare("DELETE FROM feed WHERE at <= ?").run(now - inboxMs);
       db.prepare("DELETE FROM questions WHERE at <= ?").run(now - inboxMs); // Expire if unanswered
       // Unfinished debates end by expiry (ADR-0040). `settleSeat` doesn't accept answers to requests already sent.
@@ -6864,6 +6974,13 @@ export async function startServer(options: {
     hostname,
     websocket: { server: sockets },
   });
+  // Sockets not closed yet. The server's "close" event comes when its connection count reaches 0, which is before destroyed sockets are really closed,
+  // so `stop` waits for these too. Otherwise a server started right after on the same port meets the old ones still open.
+  const accepted = new Set<Socket>();
+  server.on("connection", (socket: Socket) => {
+    accepted.add(socket);
+    socket.once("close", () => accepted.delete(socket));
+  });
   await once(server, "listening");
   url = `http://${hostname}:${(server.address() as AddressInfo).port}`;
 
@@ -6879,7 +6996,7 @@ export async function startServer(options: {
       for (const timer of expiries.values()) clearTimeout(timer);
       for (const socket of sockets.clients) socket.terminate();
       server.close();
-      await once(server, "close");
+      await Promise.all([once(server, "close"), ...[...accepted].map((s) => once(s, "close"))]);
       db.close();
     },
   };

@@ -340,6 +340,25 @@ svg.lucide {
   gap: 8px;
 }
 
+/* An error report row: a long message wraps, and on a narrow page the buttons drop under the text. */
+.settings-row.report-row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.report-row .settings-text {
+  flex-basis: 280px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.report-message {
+  overflow-wrap: anywhere;
+}
+
+.report-row .button svg {
+  margin-left: 4px;
+}
+
 /* Code to enter on GitHub. People copy it by hand, so it is large and monospaced. */
 .device-code {
   display: grid;

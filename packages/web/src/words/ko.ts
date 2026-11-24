@@ -102,6 +102,7 @@ export const ko: Words = {
       account: "계정",
       access: "가입 신청",
       overview: "한눈에 보기",
+      reports: "오류 보고",
     },
     server: "서버",
     overview: {
@@ -118,6 +119,19 @@ export const ko: Words = {
       repos: "레포",
       last7: (n) => `최근 7일 ${n}`,
       note: "서버가 이미 갖고 있는 것을 세어 보여 줘요. 이 화면 때문에 따로 모으는 건 없어요.",
+    },
+    reports: {
+      take: "오류 보고 받기",
+      takeNote: "러너, CLI, 훅, 웹, 이 서버가 오류를 여기로 보내요. 끄면 아무것도 남기지 않아요.",
+      empty: "오류 보고가 없어요",
+      pieces: { runner: "러너", cli: "CLI", hook: "훅", web: "웹", server: "서버" },
+      meta: (piece, version, os, where) => `${piece} ${version} · ${os} · ${where}`,
+      seen: (count, when) => `${count}번 · 마지막 ${when}`,
+      stack: "스택",
+      open: "GitHub 이슈로 열기",
+      resolve: "해결됨으로 표시",
+      failed: "못 했어요. 조금 있다 다시 해 볼래요?",
+      note: "가려서 받고, 누가 보냈는지는 보이지 않아요. 마지막으로 생긴 뒤 30일이 지나면 지워져요. 해결됨으로 표시해도 다시 생기면 돌아와요.",
     },
     access: {
       empty: "기다리는 신청이 없어요",

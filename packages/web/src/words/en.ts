@@ -97,6 +97,7 @@ export const en = {
       account: "Account",
       access: "Access requests",
       overview: "Overview",
+      reports: "Error reports",
     },
     server: "Server",
     overview: {
@@ -113,6 +114,22 @@ export const en = {
       repos: "Repos",
       last7: (n: number) => `${n} in the last 7 days`,
       note: "These are counts of what the server already keeps. Nothing is tracked for this page.",
+    },
+    reports: {
+      take: "Take error reports",
+      takeNote:
+        "Runners, the CLI, hooks, the web and this server send their errors here. Off keeps nothing.",
+      empty: "No error reports",
+      pieces: { runner: "Runner", cli: "CLI", hook: "Hook", web: "Web", server: "Server" },
+      meta: (piece: string, version: string, os: string, where: string) =>
+        `${piece} ${version} · ${os} · ${where}`,
+      seen: (count: number, when: string) =>
+        `${count === 1 ? "Once" : `${count} times`} · last ${when}`,
+      stack: "Stack",
+      open: "Open as GitHub issue",
+      resolve: "Mark resolved",
+      failed: "Couldn't do that. Try again in a bit?",
+      note: "Reports are masked and never show who sent them. A report goes 30 days after it last happened. A resolved one comes back if it happens again.",
     },
     access: {
       empty: "Nothing waiting",

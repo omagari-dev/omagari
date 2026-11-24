@@ -15,6 +15,7 @@ import {
 import {
   Bell,
   Bot,
+  Bug,
   ChartNoAxesColumn,
   CircleMinus,
   ExternalLink,
@@ -41,6 +42,7 @@ import { ImportanceBadge, LabelDot, useLabels } from "./labels.tsx";
 import { Mark } from "./members.tsx";
 import { browserSwitch, setBrowserSwitch } from "./notify.ts";
 import { OverviewPage } from "./overview.tsx";
+import { ErrorReportsPage } from "./reports.tsx";
 import { appearance, setAppearance, systemLook, useLook } from "./theme.ts";
 import { Avatar, personName } from "./workspace.tsx";
 
@@ -55,6 +57,7 @@ type Page =
   | "labels"
   | "info"
   | "access"
+  | "reports"
   | "overview";
 
 /** The docs page on the check command and the sandbox tools (site/merge-runs.md). */
@@ -192,6 +195,7 @@ export function Settings({
     ["labels", t.settings.pages.labels, <Tag key="labels" size={18} aria-hidden />],
     ["info", t.settings.pages.info, <Info key="info" size={18} aria-hidden />],
     ["access", t.settings.pages.access, <UserPlus key="access" size={18} aria-hidden />],
+    ["reports", t.settings.pages.reports, <Bug key="reports" size={18} aria-hidden />],
     [
       "overview",
       t.settings.pages.overview,
@@ -224,6 +228,8 @@ export function Settings({
   let body: ReactNode;
   if (page === "overview") {
     body = <OverviewPage session={session} check={check} />;
+  } else if (page === "reports") {
+    body = <ErrorReportsPage session={session} source={settings?.sourceUrl} check={check} />;
   } else if (page === "access") {
     // Server-wide, not part of the workspace's settings read.
     body = <AccessRequestsPage session={session} check={check} live={waiting} />;
