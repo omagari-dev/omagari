@@ -730,7 +730,6 @@ export function fakeSandbox() {
       unavailable: async () => fake.unavailable,
       wrap: async (input) => {
         fake.calls.push(input);
-        console.log(`TIMING wrap ${Date.now()} #${fake.calls.length}`); // TEMP
         return process.platform === "win32"
           ? [process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", input.command]
           : ["/bin/sh", "-c", input.command];

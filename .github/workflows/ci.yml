@@ -50,7 +50,5 @@ jobs:
       - run: npm ci
       - name: 타입 검사
         run: npm run typecheck
-      - name: TEMP merge-run alone
-        run: node --test --test-force-exit --test-name-pattern="sort it out" test/merge-run.test.ts
       - name: 테스트
         run: npm test
