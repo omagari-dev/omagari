@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { api, call } from "@omagari/contract";
-import { eventually, REPO3, startWorld } from "./harness.ts";
+import { eventually, REPO, REPO3, startWorld } from "./harness.ts";
 
 const TERMS = "https://example.org/terms";
 const PRIVACY = "https://example.org/privacy";
@@ -67,9 +67,11 @@ test("visits and pending or denied requests older than the history window go; an
     { account: "fifth-team", login: "erin", state: "pending" },
   ]);
 
-  // The approved account is still accepted after the cleanup and the restart.
+  // The approved account is still there for carol after the cleanup and the restart. The owner sees only their own workspace's account.
   await eventually(async () =>
-    assert.ok((await call(world.owner, api.accounts)).accounts.includes(team)),
+    assert.deepEqual((await call(carol, api.accounts)).accounts, [team]),
   );
-  assert.deepEqual((await call(carol, api.accounts)).accounts, [team]);
+  await eventually(async () =>
+    assert.deepEqual((await call(world.owner, api.accounts)).accounts, [REPO.split("/")[0]]),
+  );
 });

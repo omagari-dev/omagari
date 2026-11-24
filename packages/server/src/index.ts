@@ -3559,7 +3559,8 @@ export async function startServer(options: {
       avatar: person?.avatar ?? null,
       repo: repos[0] ?? "",
       repos,
-      giphy: options.giphy ?? null,
+      // Only workspace members get the key (ADR-0056).
+      giphy: repos.length > 0 ? (options.giphy ?? null) : null,
       prefs: prefsOf(login),
       connected: !!db.prepare("SELECT 1 FROM runner_seen WHERE login = ?").get(login),
       shared: repos.filter((r) => shared(r, login)),
@@ -3839,11 +3840,18 @@ export async function startServer(options: {
         .all(login) as { account: string }[]
     ).map((row) => row.account);
 
-  // Someone without a workspace (signed in to request access) sees only the accounts approved for them, not who else is on this server.
+  // Each person sees only the accounts of their own workspaces and the ones approved for them, not who else is on this server.
   mount(app, api.accounts, (_, c) => {
     const login = c.get("login") as string;
-    const list = workspacesOf(login).length > 0 ? [...accounts] : approvedFor(login);
-    return { accounts: list.sort() };
+    // An old name that moved to a repo the person can see still counts: their runner may be on its old remote (ADR-0043).
+    const visible = new Set(reposOf(login));
+    const moved = (
+      db.prepare("SELECT old, new FROM repo_moves").all() as { old: string; new: string }[]
+    )
+      .filter((move) => visible.has(move.new))
+      .map((move) => ownerOf(move.old));
+    const list = new Set([...workspacesOf(login), ...approvedFor(login), ...moved]);
+    return { accounts: [...list].sort() };
   });
 
   const accessStatus = (login: string) => ({
