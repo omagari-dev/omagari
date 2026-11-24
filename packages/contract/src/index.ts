@@ -1278,6 +1278,8 @@ export type CheckReading = z.infer<typeof CheckReading>;
 /** What the runner sends to the server. Later issues add their own messages here. */
 /** Max number of overlapping claims carried on one claim. The runner doesn't carry more. */
 export const MAX_OVERLAPS = 100;
+/** Max number of claims one person keeps in one repo. A claim past it is refused. */
+export const MAX_CLAIMS = 200;
 
 export const runnerToServer = {
   /**

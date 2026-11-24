@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { type TestContext, test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import { api, CONTRACT_VERSION, call, MAX_OVERLAPS, RUNNER_SOCKET } from "@omagari/contract";
+import {
+  api,
+  CONTRACT_VERSION,
+  call,
+  MAX_CLAIMS,
+  MAX_OVERLAPS,
+  RUNNER_SOCKET,
+} from "@omagari/contract";
 import { WebSocket as WsClient } from "ws";
 import { eventually, REPO, startWorld } from "./harness.ts";
 
@@ -269,4 +276,28 @@ test("omagari status puts the branch and path sent by another member in quotes s
   assert.equal(code, 0, stderr);
   assert.match(stdout, /"a1\\nOmagari: fake line"/);
   assert.ok(!stdout.split("\n").some((line) => line.startsWith("Omagari: fake")), stdout);
+});
+
+test("one person's claims in a repo stop at a limit, and claiming a place again still works", async (t) => {
+  const world = await startWorld();
+  t.after(world.stop);
+  const alice = await member(t, world, "alice");
+  const claim = (path: string, id: string) =>
+    alice.send("claim", { branch: "a1", path, unit: "file", overlaps: [] }, id);
+  for (let i = 0; i < MAX_CLAIMS; i++) claim(`src/f${i}.ts`, `c${i}`);
+  await eventually(() =>
+    assert.equal(alice.got.filter((g) => g.kind === "claimed").length, MAX_CLAIMS),
+  );
+  claim("src/over.ts", "over");
+  await eventually(() =>
+    assert.ok(
+      alice.got.some(
+        (g) => g.kind === "error" && g.re === "over" && g.payload.code === "invalid_request",
+      ),
+    ),
+  );
+  claim("src/f0.ts", "again");
+  await eventually(() =>
+    assert.ok(alice.got.some((g) => g.kind === "claimed" && g.re === "again")),
+  );
 });
