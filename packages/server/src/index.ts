@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt } from "node:crypto";
 import { once } from "node:events";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { arch, homedir, platform } from "node:os";
 import { relative } from "node:path";
 import { basename } from "node:path/posix";
@@ -6974,6 +6974,13 @@ export async function startServer(options: {
     hostname,
     websocket: { server: sockets },
   });
+  // Sockets not closed yet. The server's "close" event comes when its connection count reaches 0, which is before destroyed sockets are really closed,
+  // so `stop` waits for these too. Otherwise a server started right after on the same port meets the old ones still open.
+  const accepted = new Set<Socket>();
+  server.on("connection", (socket: Socket) => {
+    accepted.add(socket);
+    socket.once("close", () => accepted.delete(socket));
+  });
   await once(server, "listening");
   url = `http://${hostname}:${(server.address() as AddressInfo).port}`;
 
@@ -6989,7 +6996,7 @@ export async function startServer(options: {
       for (const timer of expiries.values()) clearTimeout(timer);
       for (const socket of sockets.clients) socket.terminate();
       server.close();
-      await once(server, "close");
+      await Promise.all([once(server, "close"), ...[...accepted].map((s) => once(s, "close"))]);
       db.close();
     },
   };

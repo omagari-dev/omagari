@@ -136,13 +136,9 @@ test("while the operator refuses reports, nothing is kept and senders hear they'
 
   // Taking them again keeps the next ones, and the choice lasts through a restart.
   await world.restartServer();
-  // The connection to the stopped server stays broken, so the first request may fail.
-  await eventually(() => call(world.owner, api.errorReports));
   assert.equal((await call(world.owner, api.errorReports)).off, true);
   assert.deepEqual(await call(world.owner, api.refuseReports, { off: false }), { off: false });
-  assert.deepEqual(await eventually(() => call(carol, api.sendReport, report("taken"))), {
-    off: false,
-  });
+  assert.deepEqual(await call(carol, api.sendReport, report("taken")), { off: false });
   assert.deepEqual(
     (await call(world.owner, api.errorReports)).reports.map((r) => r.message),
     ["taken"],

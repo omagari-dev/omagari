@@ -1154,6 +1154,9 @@ export async function startWorld(
     ) {
       const { port } = new URL(server.url);
       if (!serverDown) await server.stop();
+      // The old server's sockets are closed now. One turn of the event loop lets this process's fetch read that and drop them from its pool,
+      // so the first call to the new server doesn't go out on a dead keep-alive socket.
+      await new Promise((resolve) => setImmediate(resolve));
       server = await startServer({ ...serverOptions, ...override, port: Number(port) });
       serverDown = false;
     },
