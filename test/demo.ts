@@ -42,6 +42,7 @@ import {
   call,
   type Debate,
   decode,
+  type ErrorReport,
   encode,
   type MergeRun,
   RUNNER_SOCKET,
@@ -1135,6 +1136,48 @@ if (process.env.DEMO_UPDATE) {
   fake.names.set("yuna", "Yuna Kang");
   const yuna = await world.login("yuna");
   await call(yuna, api.requestAccess, { account: "kang-studio", agree: true });
+  // Error reports (ADR-0063) for Settings → Server → Error reports: a runner error on Windows that happened 12 times, a CLI one, and a stuck sign-in.
+  const runner = {
+    piece: "runner",
+    kind: "error",
+    version: "0.4.1",
+    os: "win32",
+    arch: "x64",
+    runtime: "Node 24.3.0",
+    where: "background runner / observation",
+    name: "Error",
+    message: "EPERM: operation not permitted, open 'C:\\Users\\yuna\\.omagari\\state.json'",
+    stack: [
+      "at Object.openSync (node:fs:573:18)",
+      "at writeState (C:\\Users\\yuna\\AppData\\Roaming\\npm\\node_modules\\omagari\\packages\\runner\\src\\index.ts:412:9)",
+      "at observe (C:\\Users\\yuna\\AppData\\Roaming\\npm\\node_modules\\omagari\\packages\\runner\\src\\observe.ts:88:5)",
+    ],
+    count: 12,
+  } satisfies ErrorReport;
+  await call(yuna, api.sendReport, runner);
+  await call(yuna, api.sendReport, {
+    ...runner,
+    piece: "cli",
+    os: "darwin",
+    arch: "arm64",
+    where: "omagari setup",
+    name: "TypeError",
+    message: "Cannot read properties of undefined (reading 'session')",
+    stack: ["at setup (/Users/yuna/omagari/packages/cli/src/main.ts:204:31)"],
+    count: 1,
+  });
+  await call(yuna, api.sendReport, {
+    ...runner,
+    piece: "web",
+    kind: "stuck",
+    os: "Windows",
+    runtime: "Chrome 142",
+    where: "sign-in / waiting for GitHub",
+    name: "Stuck",
+    message: "Waited 60 seconds",
+    stack: [],
+    count: 3,
+  });
 }
 
 seeded = true;

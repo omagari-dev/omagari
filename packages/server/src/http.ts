@@ -37,10 +37,14 @@ const fail = (
 ) => c.json({ error }, status);
 
 /**
- * An empty app that returns errors in the contract's error shape. Handlers reject by throwing `ContractFailure`.
+ * An empty app that returns errors in the contract's error shape. Handlers reject by throwing `ContractFailure`; anything else answers 500 and goes to `onInternal`.
  * `member` turns the Authorization header into the member's login.
  */
-export function createApp(member: (authorization?: string) => string | undefined): Hono<Env> {
+export function createApp(
+  member: (authorization?: string) => string | undefined,
+  /** Called with an unexpected error before it answers 500, so the server can keep it as an error report (ADR-0063). */
+  onInternal?: (error: Error, c: Context<Env>) => void,
+): Hono<Env> {
   const app = new Hono<Env>();
   app.use(
     bodyLimit({
@@ -68,6 +72,11 @@ export function createApp(member: (authorization?: string) => string | undefined
       });
     }
     console.error(error);
+    try {
+      onInternal?.(error, c);
+    } catch (failed) {
+      console.error("Couldn't keep the error report:", failed);
+    }
     return fail(c, 500, { code: "internal", message: "Something failed inside the server" });
   });
   return app;

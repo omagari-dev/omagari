@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 73;
+export const CONTRACT_VERSION = 74;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -1839,6 +1839,123 @@ export const OperatorOverview = z.strictObject({
 });
 export type OperatorOverview = z.output<typeof OperatorOverview>;
 
+/** Most stack lines a report keeps (ADR-0063). */
+export const REPORT_STACK_LINES = 20;
+/** Longest error message a report keeps, in characters. Longer ones are cut. */
+export const REPORT_MESSAGE_CHARS = 1000;
+
+/**
+ * An error report (ADR-0063) or a stuck report (`kind: "stuck"`, ADR-0064) as a piece sends it. The sender masks it with `maskReport`, and the server masks it again before storing.
+ * It never holds file content, tokens, command arguments, repo or branch names, or environment variables.
+ */
+export const ErrorReport = z.strictObject({
+  piece: z.enum(["runner", "cli", "hook", "web", "server"]),
+  kind: z.enum(["error", "stuck"]),
+  /** The piece's version (`git describe --tags`, or the npm version). */
+  version: z.string().max(100),
+  /** `process.platform` and `process.arch`, or the browser's. */
+  os: z.string().max(50),
+  arch: z.string().max(50),
+  /** "Node 24.3.0", or the browser's name and version. */
+  runtime: z.string().max(100),
+  /** Which command or screen, and the step if it's a stuck wait ("background runner / observation", "sign-in / waiting for GitHub"). */
+  where: z.string().max(200),
+  /** The error's name ("TypeError"). A stuck report says "Stuck". */
+  name: z.string().max(100),
+  message: z.string().max(REPORT_MESSAGE_CHARS),
+  stack: z.array(z.string().max(500)).max(REPORT_STACK_LINES),
+  /** How many times it happened while waiting to be sent. */
+  count: z.number().int().min(1).max(10_000).default(1),
+});
+export type ErrorReport = z.output<typeof ErrorReport>;
+
+/** A report as the operator sees it: one row per grouping key (`reportKey`), never the sender's login (ADR-0063). */
+export const ReportRow = ErrorReport.extend({
+  id: z.number().int(),
+  /** When it first and last happened (ISO). The row goes 30 days after `last`. */
+  first: z.string(),
+  last: z.string(),
+});
+export type ReportRow = z.output<typeof ReportRow>;
+
+const REDACTED = "<redacted>";
+/** A home folder on macOS, Linux and Windows, with either slash, with a user name after it. */
+const HOME_PATHS = /(?:\/Users|\/home|[A-Za-z]:(?:\\{1,2}|\/)Users)(?:\\{1,2}|\/)[^\\/\s"'`:]+/g;
+/** Token shapes (ADR-0063, after VS Code's `userDataRegexes`). Order matters: whole URLs' queries first, then `key=value`. */
+const SECRETS: [RegExp, string][] = [
+  [/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g, REDACTED],
+  [/\bBearer\s+[^\s"'`,;]+/gi, `Bearer ${REDACTED}`],
+  [/\beyJ[\w-]+\.[\w-]+\.[\w-]*/g, REDACTED],
+  [/(\bhttps?:\/\/[^\s?#"'`<>]+)\?[^\s#"'`<>]*/g, `$1?${REDACTED}`],
+  [
+    /\b((?:api[_-]?)?key|token|secret|password|passwd|pwd)(\s*[=:]\s*)(?!<redacted>)[^\s&"'`,;]+/gi,
+    `$1$2${REDACTED}`,
+  ],
+  [/[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g, REDACTED],
+];
+
+/**
+ * Masks one piece of text for an error report (ADR-0063): the repo folder becomes `<repo>`, a home folder `<home>`, and token shapes, URL query strings and emails `<redacted>`.
+ * `paths` are the sender's own folders when it knows them; any home folder in the usual places is masked even without them. Best effort: a token in an unusual shape can slip through.
+ */
+export function maskText(text: string, paths: { home?: string; repo?: string } = {}): string {
+  let out = text;
+  for (const [folder, mark] of [
+    [paths.repo, "<repo>"],
+    [paths.home, "<home>"],
+  ] as const) {
+    if (!folder || folder.length < 2) continue;
+    // Either slash, and a doubled backslash as JSON writes it.
+    const pattern = folder
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]+/)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("(?:\\\\{1,2}|/)");
+    out = out.replace(new RegExp(pattern, "gi"), mark);
+  }
+  out = out.replace(HOME_PATHS, "<home>");
+  for (const [pattern, mark] of SECRETS) out = out.replace(pattern, mark);
+  return out;
+}
+
+/** Masks every free-text field of a report and cuts it to the contract's sizes. Used by every sender and again by the server. */
+export function maskReport(
+  report: ErrorReport,
+  paths?: { home?: string; repo?: string },
+): ErrorReport {
+  const mask = (text: string, max: number) => maskText(text, paths).slice(0, max);
+  return {
+    ...report,
+    where: mask(report.where, 200),
+    name: mask(report.name, 100),
+    message: mask(report.message, REPORT_MESSAGE_CHARS),
+    stack: report.stack.slice(0, REPORT_STACK_LINES).map((line) => mask(line, 500)),
+  };
+}
+
+/**
+ * The grouping key (ADR-0063): the same piece, kind, error name, message with numbers and masked parts taken out, and first stack line in Omagari's code is the same row.
+ * Run it on a masked report.
+ */
+export function reportKey(report: ErrorReport): string {
+  const plain = (text: string) =>
+    text
+      .replace(/<(?:home|repo|redacted)>/g, "")
+      .replace(/\d+/g, "")
+      .replace(/\\/g, "/")
+      .trim();
+  // Omagari's code is under `packages/`, whether it runs from a clone or from npm's node_modules. Where it sits on the disk is left out.
+  const line = report.stack.find((l) => /packages[\\/]/.test(l)) ?? report.stack[0] ?? "";
+  const ours = line.replace(/[^\s(]*packages[\\/]/, "packages/");
+  return JSON.stringify([
+    report.piece,
+    report.kind,
+    report.name,
+    plain(report.message),
+    plain(ours),
+  ]);
+}
+
 /** `api.myAccess`: whether the server takes requests, its legal text links, and the caller's requests, newest first. */
 export const AccessStatus = z.strictObject({
   open: z.boolean(),
@@ -2029,6 +2146,37 @@ export const api = {
     path: "/api/access/decide",
     body: z.strictObject({ id: z.number().int(), approve: z.boolean() }),
     response: z.strictObject({ requests: z.array(PendingAccess) }),
+  },
+  /**
+   * A piece sends an error or stuck report (ADR-0063, ADR-0064). The server masks it again, adds it to the row with the same `reportKey`,
+   * or starts a row if the sender started fewer than 20 in the last hour (past that it's dropped without an error). `off` is true when the operator refuses reports:
+   * nothing was kept, and the piece stops sending.
+   */
+  sendReport: {
+    method: "POST",
+    path: "/api/reports",
+    body: ErrorReport,
+    response: z.strictObject({ off: z.boolean() }),
+  },
+  /** Every report row, last seen first, and whether the server refuses reports. Never the sender's login. `forbidden` for anyone who isn't an operator. */
+  errorReports: {
+    method: "GET",
+    path: "/api/reports/all",
+    response: z.strictObject({ reports: z.array(ReportRow), off: z.boolean() }),
+  },
+  /** An operator marks a row resolved, which deletes it; if it happens again it comes back as a new row. The answer is the list after it. */
+  resolveReport: {
+    method: "POST",
+    path: "/api/reports/resolve",
+    body: z.strictObject({ id: z.number().int() }),
+    response: z.strictObject({ reports: z.array(ReportRow), off: z.boolean() }),
+  },
+  /** An operator refuses reports for the whole server (`off`), or takes them again. While refused, the server keeps nothing, not even its own errors. */
+  refuseReports: {
+    method: "POST",
+    path: "/api/reports/refuse",
+    body: z.strictObject({ off: z.boolean() }),
+    response: z.strictObject({ off: z.boolean() }),
   },
   /**
    * Shares the repo `REPO_HEADER` picks, or stops sharing it (repo sharing, ADR-0049). Per member and repo, so it follows the member to other machines.
