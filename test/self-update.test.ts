@@ -65,7 +65,7 @@ const welcome: Reply = (socket, hello) =>
       id: "w",
       re: hello.id,
       kind: "welcome",
-      payload: { login: "owner", repo: REPO, shared: true },
+      payload: { login: "owner", repo: REPO, shared: true, reportsOff: false },
     }),
   );
 

@@ -250,7 +250,12 @@ test("the runner takes only Q&A. It doesn't run a request not in the contract, a
   // Imitating a breached server: it answers hello properly, then sends a request not in the contract, a Q&A that widens tools, and a proper Q&A.
   const server = await fakeServer(t, (socket, hello) => {
     socket.send(
-      encode(serverToRunner, "welcome", { login: "owner", repo: REPO, shared: true }, hello.id),
+      encode(
+        serverToRunner,
+        "welcome",
+        { login: "owner", repo: REPO, shared: true, reportsOff: false },
+        hello.id,
+      ),
     );
     socket.send(frame({ id: "x", kind: "run_command", payload: { command: "rm -rf ~" } }));
     const ask = {
