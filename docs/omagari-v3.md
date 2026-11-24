@@ -19,7 +19,7 @@ Working in a team with agents makes code faster, but the things people need to l
 
 - It's common even in human teams. A study of the history of 9 open source projects found text conflicts in 16% of merges, and one in three conflicts showed up not in the text but in the build or tests (Crystal)
 - Agents can't yet line things up by themselves. When two coding agents cooperate, the success rate was 25%, about half of what one agent got doing both jobs (CooperBench)
-- Several tools have appeared for the same problem: Room, mcp-git-coord, memlay, AgentHelm, GitHub Copilot Memory
+- Several tools have appeared for the same problem: Room, mcp-git-coord, memlay, AgentHelm, GitHub Copilot Memory, Cursor Projects
 
 ## 3. Today it's all separate
 
@@ -106,7 +106,7 @@ How we detect, where we store, and in what order we build is in the Omagari v3 i
 ## 8. Risks
 
 - **Nobody moves over**: teams are already on Discord and Slack. Having everything in one place has to be worth more than the cost of moving
-- **GitHub builds the space too**: GitHub has Agent HQ, which runs agents from several vendors in one place, and Copilot Memory. What's left for us is staying vendor-neutral and the flow between people
+- **GitHub and Cursor build the space too**: GitHub has Agent HQ, which runs agents from several vendors in one place, and Copilot Memory. Cursor made Projects multiplayer on 2026-11-10, with a shared task board and shared context for teammates' agents. What's left for us is staying vendor-neutral and the flow between people
 - **The debate doesn't help**: research says it's a bad starting point. So we build it last, and keep it only if it beats sending alerts alone
 - **Conflicts are rare**: we measure first, and if they're rare we only build alerts and decision records
 - **Alert overload**: we measure precision and narrow the conditions for calling a debate
@@ -137,6 +137,8 @@ How we detect, where we store, and in what order we build is in the Omagari v3 i
 - [Sycophancy in Multi-Agent Debate](https://arxiv.org/abs/2509.23055v1)
 - [GitHub Copilot agentic memory](https://github.blog/2026-01-09-building-an-agentic-memory-system-for-github-copilot)
 - [GitHub Agent HQ](https://github.blog/news-insights/product-news/welcome-home-agents/)
+- [Cursor: Projects multiplayer](https://cursor.com/blog/projects-multiplayer)
+- [Cursor: Projects](https://cursor.com/blog/projects)
 - [Room](https://github.com/rohanz/room)
 - [mcp-git-coord](https://github.com/OperatingSystem-1/mcp-git-coord)
 - [memlay](https://docs.rs/crate/memlay/0.1.3)

@@ -47,11 +47,12 @@ A few tools already cover a piece of this. Omagari puts the pieces in one flow: 
 | [mcp-git-coord](https://github.com/OperatingSystem-1/mcp-git-coord) | MCP server you install from npm | Agents register what they plan to do, and it flags conflicts before code is written | Merge resolution is controlled by a person |
 | [SyncVibe](https://github.com/Curious1008/syncvibe) | Shared rooms with an invite code | Not what it's for. Each person's agent works on their own checkout | One chat, and an @mention triggers a friend's agent |
 | [GitHub Agent HQ](https://github.blog/news-insights/product-news/welcome-home-agents/) | Mission control on GitHub for assigning and tracking agents | Not what it's for. It manages agents, not teammates' own | Issues and PRs |
+| [Cursor Projects](https://cursor.com/blog/projects-multiplayer) | Multiplayer Projects in Cursor, with agents in the cloud or on your machine | Coordinators spot overlapping work early | A shared task board with each task's PR, and shared context every agent can read |
 | **Omagari** | Web workspace, plus a runner and hooks on each member's machine | Direct and indirect conflicts and duplicate work, checked by merging and running your check command | Channels, forums, and Q&A with teammates and their agents. Decisions become GitHub PRs |
 
 Omagari's way of watching the repo follows Room's behavior. Room is under a noncommercial license, so we looked at what it does and wrote new code.
 
-<sub>Checked against each project's README and docs on 2026-11-19. If something is wrong, tell us in Issues.</sub>
+<sub>Checked against each project's README and docs on 2026-11-19, and Cursor's row against its blog posts on 2026-11-25. If something is wrong, tell us in Issues.</sub>
 
 ## Hosted or self-hosted
 
