@@ -168,18 +168,21 @@ const tokenKeyFor = (setting: string | undefined, database: string | undefined) 
   return createHash("sha256").update(readFileSync(file, "utf8").trim()).digest();
 };
 /** AES-256-GCM. The stored text is the prefix, then nonce, tag, and ciphertext (base64). */
-const encryptToken = (key: Buffer, plain: string) => {
+export const encryptToken = (key: Buffer, plain: string) => {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   return TOKEN_PREFIX + Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64");
 };
 /** The plain token, or null if it isn't encrypted text or the key is wrong. */
-const decryptToken = (key: Buffer, text: string) => {
+export const decryptToken = (key: Buffer, text: string) => {
   if (!isEncrypted(text)) return null;
   try {
     const raw = Buffer.from(text.slice(TOKEN_PREFIX.length), "base64");
-    const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12));
+    // The tag is always 16 bytes. Without this, a shorter tag would be accepted.
+    const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12), {
+      authTagLength: 16,
+    });
     decipher.setAuthTag(raw.subarray(12, 28));
     return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString("utf8");
   } catch {
@@ -582,7 +585,7 @@ export async function startServer(options: {
   githubApp?: string;
   /** The GIPHY key (ADR-0056). The server only hands it to signed-in members, and their browsers ask GIPHY directly. Without it the web has no GIF button. */
   giphy?: string;
-  /** GitHub logins of the server's operators (`OMAGARI_OPERATORS`, ADR-0052). They approve access requests. Without any, the server takes no requests. */
+  /** The server's operators (`OMAGARI_OPERATORS`, ADR-0052): `id:<GitHub account id>`, or a login from before ADR-0062, bound to its account id. They approve access requests. Without any, the server takes no requests. */
   operators?: string[];
   /** Links to the server's terms and privacy policy. When either is set, an access request needs agreeing to them (ADR-0052). */
   terms?: string;
@@ -699,8 +702,15 @@ export async function startServer(options: {
   ) as GitHub;
   /** Accounts to accept (lowercase). */
   const accounts = new Set(options.accept.map((entry) => entry.split("/")[0]?.toLowerCase()));
-  const operators = new Set((options.operators ?? []).map((login) => login.toLowerCase()));
-  const isOperator = (login: string) => operators.has(login.toLowerCase());
+  // Operators are GitHub account ids (ADR-0062), so a name someone else takes later doesn't carry the role.
+  const configured = options.operators ?? [];
+  const takesRequests = configured.length > 0;
+  const operatorIds = new Set(
+    configured.filter((entry) => /^id:\d+$/.test(entry)).map((entry) => Number(entry.slice(3))),
+  );
+  const legacyOperators = new Set(
+    configured.filter((entry) => !/^id:\d+$/.test(entry)).map((login) => login.toLowerCase()),
+  );
   /** Repos set by the server config. */
   const seeds = options.accept.filter((entry) => entry.includes("/"));
   /** The repo from when there was one repo. Rows in an existing DB without a repo belong to this repo. */
@@ -768,6 +778,29 @@ export async function startServer(options: {
     login TEXT PRIMARY KEY,
     name TEXT NOT NULL
   ) STRICT`);
+  // A login from OMAGARI_OPERATORS (the old form) is bound once to the account id that has it: when that account signs in, or at start if it already has a row (ADR-0062). Later, another account with that name isn't an operator.
+  db.exec(`CREATE TABLE IF NOT EXISTS operator_ids (
+    login TEXT PRIMARY KEY,
+    github_id INTEGER NOT NULL
+  ) STRICT`);
+  const bound = db.prepare("SELECT login, github_id FROM operator_ids").all() as {
+    login: string;
+    github_id: number;
+  }[];
+  for (const row of bound) if (legacyOperators.has(row.login)) operatorIds.add(row.github_id);
+  const bindLegacyOperator = (login: string, id: number) => {
+    const key = login.toLowerCase();
+    if (!legacyOperators.has(key) || bound.some((row) => row.login === key)) return;
+    db.prepare("INSERT INTO operator_ids (login, github_id) VALUES (?, ?)").run(key, id);
+    bound.push({ login: key, github_id: id });
+    operatorIds.add(id);
+  };
+  const isOperator = (login: string) => {
+    const person = db
+      .prepare("SELECT github_id FROM people WHERE login = ? COLLATE NOCASE")
+      .get(login) as { github_id: number | null } | undefined;
+    return person?.github_id != null && operatorIds.has(person.github_id);
+  };
   // The last observation for each work (member + branch). `files` is the contract's ObservedFile array (JSON).
   db.exec(`CREATE TABLE IF NOT EXISTS works (
     login TEXT NOT NULL,
@@ -1306,6 +1339,12 @@ export async function startServer(options: {
   if (!hasColumn("people", "avatar")) db.exec("ALTER TABLE people ADD COLUMN avatar TEXT");
   // A person's GitHub numeric id (#315). Written at login. If another id used this name before, they can't get in.
   if (!hasColumn("people", "github_id")) db.exec("ALTER TABLE people ADD COLUMN github_id INTEGER");
+  for (const login of legacyOperators) {
+    const person = db
+      .prepare("SELECT github_id FROM people WHERE login = ? COLLATE NOCASE")
+      .get(login) as { github_id: number | null } | undefined;
+    if (person?.github_id != null) bindLegacyOperator(login, person.github_id);
+  }
   // The account kind and avatar (the name line of mockup 101). Read from GitHub and updated when a member's push access is read.
   if (!hasColumn("workspaces", "kind")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN kind TEXT NOT NULL DEFAULT 'organization'");
@@ -3460,7 +3499,7 @@ export async function startServer(options: {
       });
     }
     // A server that takes access requests lets the person in without a workspace, so they can request one (ADR-0052).
-    if (access.push.length === 0 && operators.size === 0) {
+    if (access.push.length === 0 && !takesRequests) {
       throw new ContractFailure({
         code: "forbidden",
         // Don't include the server's repo names. A private repo's name doesn't leak to someone who couldn't join.
@@ -3481,6 +3520,7 @@ export async function startServer(options: {
     db.prepare(
       "INSERT OR REPLACE INTO people (login, name, avatar, github_id) VALUES (?, ?, ?, ?)",
     ).run(login, name ?? login, avatar, id);
+    bindLegacyOperator(login, id);
     shareSituation(); // work of a member who left and came back shows again
     return { session, login };
   });
@@ -3785,7 +3825,7 @@ export async function startServer(options: {
   });
 
   const accessStatus = (login: string) => ({
-    open: operators.size > 0,
+    open: takesRequests,
     ...(options.terms && { terms: options.terms }),
     ...(options.privacy && { privacy: options.privacy }),
     requests: (
@@ -3830,7 +3870,7 @@ export async function startServer(options: {
 
   mount(app, api.requestAccess, ({ account, agree }, c) => {
     const login = c.get("login") as string;
-    if (operators.size === 0)
+    if (!takesRequests)
       throw new ContractFailure({
         code: "forbidden",
         message: "This server doesn't take access requests",
@@ -5987,7 +6027,7 @@ export async function startServer(options: {
         // A read made with a token that stopped being live while GitHub answered comes back as unknown, so it neither ends the session nor drops access (#483).
         const access = await readAccess(row.login, row.github_token, row.hash);
         if (stopped) return;
-        if (access.push.length > 0 || access.unknown.length > 0 || operators.size > 0) continue;
+        if (access.push.length > 0 || access.unknown.length > 0 || takesRequests) continue;
         endSession(row.hash, {
           code: "forbidden",
           message: `${row.login} was removed: no push permission on any workspace repo anymore`,
