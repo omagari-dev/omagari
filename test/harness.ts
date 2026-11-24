@@ -1238,6 +1238,9 @@ export async function startWorld(
     /** Starts `omagari <args>` (the runner), which doesn't end, in `cwd`. */
     launchCliIn: (cwd: string, ...args: string[]) =>
       launch(process.execPath, [CLI, ...args], { cwd, env: cliEnv() }),
+    /** Like `launchCliIn` with `env` added for that process only. Never set them on `process.env`: on Windows it's case-insensitive, and a plain copy put back loses `Path`. */
+    launchCliWith: (env: Record<string, string>, cwd: string, ...args: string[]) =>
+      launch(process.execPath, [CLI, ...args], { cwd, env: { ...cliEnv(), ...env } }),
     /** Like an agent does, runs one hook command line written in the config with `sh -c` in `cwd` and feeds it input (JSON). */
     // Hooks get this machine's config folder too, so they talk to this test's background runner, not the one of the person running the tests.
     shell: (command: string, stdin: string, cwd = repo.folder) =>

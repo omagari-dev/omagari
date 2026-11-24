@@ -33,12 +33,9 @@ async function twoFolders(t: { after: (fn: () => Promise<unknown>) => void }) {
   return { world, broken: broken.folder, queue: join(world.config, "omagari", "reports.json") };
 }
 
-/** Starts the background runner with `env` set for it (and only it: the test process's server and runners don't read these). */
+/** Starts the background runner with `env` added for it only. */
 function background(world: World, t: { after: (fn: () => Promise<unknown>) => void }, env = {}) {
-  const saved = { ...process.env };
-  Object.assign(process.env, env);
-  const started = world.launchCliIn(world.repo.folder, "runner", "background");
-  process.env = saved;
+  const started = world.launchCliWith(env, world.repo.folder, "runner", "background");
   t.after(() => started.stop("SIGTERM"));
   return started;
 }
