@@ -3217,6 +3217,28 @@ export async function startServer(options: {
     await next();
   });
 
+  // Browser headers for the web screen (#501). The screen loads GIFs and avatars from GIPHY and GitHub, calls GIPHY's API (ADR-0056) and npm's registry (runner-update.ts). Its own API and live socket are same-origin, so on a self-hosted server they need no entry.
+  if (options.webDir)
+    app.use(async (c, next) => {
+      c.header(
+        "Content-Security-Policy",
+        [
+          "default-src 'self'",
+          "img-src 'self' data: https://*.giphy.com https://avatars.githubusercontent.com",
+          "font-src 'self' data:",
+          "connect-src 'self' https://api.giphy.com https://registry.npmjs.org",
+          "object-src 'none'",
+          "base-uri 'none'",
+          "form-action 'self'",
+          "frame-ancestors 'none'",
+        ].join("; "),
+      );
+      c.header("X-Frame-Options", "DENY");
+      c.header("X-Content-Type-Options", "nosniff");
+      c.header("Referrer-Policy", "no-referrer");
+      await next();
+    });
+
   const limits = options.limits ?? {};
   const LIMITED = {
     requests: (max: number) => `Hit the limit of ${max} requests a minute. Try again in a minute`,

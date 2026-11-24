@@ -52,3 +52,28 @@ test("an old `#channel` link opens the same channel at its path: the web finds i
   assert.match(await (await fetch(`${world.server.url}${path}`)).text(), /<title>Omagari/);
   assert.match(await (await fetch(`${world.server.url}/login`)).text(), /<title>Omagari/);
 });
+
+test("the server sends the browser security headers with the web screen and its API", async (t) => {
+  const web = await mkdtemp(join(tmpdir(), "omagari-web-"));
+  t.after(() => rm(web, { recursive: true, force: true }));
+  await writeFile(join(web, "index.html"), "<!doctype html><title>Omagari</title>");
+  const world = await startWorld({ webDir: web });
+  t.after(world.stop);
+
+  for (const path of ["/", "/api/health", "/api/nope"]) {
+    const response = await fetch(`${world.server.url}${path}`);
+    const csp = response.headers.get("content-security-policy") ?? "";
+    assert.match(csp, /default-src 'self'/, path);
+    assert.match(csp, /frame-ancestors 'none'/, path);
+    assert.match(
+      csp,
+      /img-src 'self' data: https:\/\/\*\.giphy\.com https:\/\/avatars\.githubusercontent\.com/,
+      path,
+    );
+    assert.match(csp, /font-src 'self' data:/, path);
+    assert.match(csp, /connect-src 'self' https:\/\/api\.giphy\.com/, path);
+    assert.equal(response.headers.get("x-frame-options"), "DENY", path);
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff", path);
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer", path);
+  }
+});
