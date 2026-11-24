@@ -207,9 +207,12 @@ test("a new request reaches an operator's open web live, and never a non-operato
   await member.close();
 });
 
-test("a workspace member sees only their own accounts and the ones approved for them", async (t) => {
-  const world = await startWorld({ accept: [REPO, REPO3] });
+test("a workspace member sees only their own accounts, and old names of repos they can see, not accounts unrelated to them", async (t) => {
+  // repo_moves (ADR-0043): one old name moved to a repo the owner can see, and one moved to a repo they can't.
+  const seed = `CREATE TABLE repo_moves (old TEXT PRIMARY KEY COLLATE NOCASE, new TEXT NOT NULL) STRICT;
+    INSERT INTO repo_moves VALUES ('old-owner/space', '${REPO}'), ('unrelated/x', 'elsewhere/y');`;
+  const world = await startWorld({ accept: [REPO, REPO3], seed });
   t.after(world.stop);
-  // The owner's workspace is the first account; the other accepted account is not theirs, so it doesn't show.
-  assert.deepEqual((await call(world.owner, api.accounts)).accounts, [REPO.split("/")[0]]);
+  const own = REPO.split("/")[0] as string;
+  assert.deepEqual((await call(world.owner, api.accounts)).accounts, ["old-owner", own].sort());
 });

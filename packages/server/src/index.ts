@@ -3773,7 +3773,14 @@ export async function startServer(options: {
   // Each person sees only the accounts of their own workspaces and the ones approved for them, not who else is on this server.
   mount(app, api.accounts, (_, c) => {
     const login = c.get("login") as string;
-    const list = new Set([...workspacesOf(login), ...approvedFor(login)]);
+    // An old name that moved to a repo the person can see still counts: their runner may be on its old remote (ADR-0043).
+    const visible = new Set(reposOf(login));
+    const moved = (
+      db.prepare("SELECT old, new FROM repo_moves").all() as { old: string; new: string }[]
+    )
+      .filter((move) => visible.has(move.new))
+      .map((move) => ownerOf(move.old));
+    const list = new Set([...workspacesOf(login), ...approvedFor(login), ...moved]);
     return { accounts: [...list].sort() };
   });
 
