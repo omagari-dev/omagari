@@ -3375,6 +3375,8 @@ export async function startServer(options: {
       if (can === undefined) unknown.push(repo);
       else if (can.push) {
         push.push(repo);
+        // A "yes" from a token that is no longer live must not bring back access that was removed.
+        if (session && !live(session, token)) continue;
         db.prepare("INSERT OR IGNORE INTO access (login, repo) VALUES (?, ?)").run(login, repo);
       } else db.prepare("DELETE FROM access WHERE login = ? AND repo = ?").run(login, repo);
     }
@@ -3642,12 +3644,15 @@ export async function startServer(options: {
     await Promise.all(
       (
         db
-          .prepare("SELECT login, dec(MAX(github_token)) AS token FROM sessions GROUP BY login")
+          .prepare(
+            "SELECT hash, login, dec(github_token) AS token FROM sessions s WHERE rowid = (SELECT MAX(rowid) FROM sessions WHERE login = s.login)",
+          )
           .all() as {
+          hash: string;
           login: string;
           token: string;
         }[]
-      ).map(({ login, token }) => readAccess(login, token, undefined, [name])),
+      ).map(({ hash, login, token }) => readAccess(login, token, hash, [name])),
     );
     shareSituation();
     syncSoon();
@@ -6055,7 +6060,11 @@ export async function startServer(options: {
         // Skip sessions that ended above, or when GitHub rejected their refresh.
         if (!db.prepare("SELECT 1 FROM sessions WHERE hash = ?").get(row.hash)) continue;
         // A read made with a token that stopped being live while GitHub answered comes back as unknown, so it neither ends the session nor drops access (#483).
-        const access = await readAccess(row.login, row.github_token, row.hash);
+        // The first loop may have refreshed the token, so read the current one.
+        const fresh = db
+          .prepare("SELECT dec(github_token) AS github_token FROM sessions WHERE hash = ?")
+          .get(row.hash) as { github_token: string };
+        const access = await readAccess(row.login, fresh.github_token, row.hash);
         if (stopped) return;
         if (access.push.length > 0 || access.unknown.length > 0 || takesRequests) continue;
         endSession(row.hash, {
