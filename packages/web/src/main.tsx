@@ -21,6 +21,7 @@ import {
   setWorkspace,
   signedOut,
 } from "./api.ts";
+import { loadEntry, settle } from "./enter.ts";
 import { setLanguage, t, useLanguage } from "./i18n.ts";
 import { Centered, Login } from "./login.tsx";
 import { setAppearance } from "./theme.ts";
@@ -32,24 +33,6 @@ const WORKSPACE_KEY = "omagari.workspace";
 
 /** The address to come back to after signing in (ADR-0057). */
 let returnTo: string | undefined;
-
-/**
- * The path for an address once signed in: an old `#…` link gets its workspace from its channel (`workspaces`, the likely one first),
- * and `/login` and unknown addresses go to `/`.
- */
-async function settle(address: string, session: string, workspaces: string[]) {
-  const at = parse(address);
-  if (typeof at !== "object" || !(at.workspace || at.channel)) return "/";
-  const workspace =
-    at.workspace ??
-    (await workspaceOf(at.channel ?? "", workspaces, (id) =>
-      call({ ...server(session), workspace: id }, api.channels).then(
-        (list) => list.channels,
-        () => [],
-      ),
-    ));
-  return format({ ...at, workspace });
-}
 
 type State =
   | { kind: "checking" }
@@ -76,24 +59,15 @@ function App() {
   const enter = useCallback(
     async (session: string) => {
       try {
-        const [me, { workspaces }] = await Promise.all([
-          call(server(session), api.me),
-          call(server(session), api.workspaces),
-        ]);
-        // No workspace left (the last one was deleted): back to the sign-in screen.
-        if (!workspaces.length) {
-          saveSession(undefined);
-          return setState({ kind: "out" });
-        }
-        saveSession(session);
-        // Enter the workspace seen last time (if it's gone, the first one), unless the address is in another one.
-        const saved = remembered(WORKSPACE_KEY);
-        const workspace =
-          workspaces.find((space) => space.id === saved)?.id ?? workspaces[0]?.id ?? "";
         const back = returnTo ?? here();
         returnTo = undefined;
-        const others = workspaces.map((space) => space.id).filter((id) => id !== workspace);
-        const target = await settle(back, session, [workspace, ...others]);
+        // Enter the workspace seen last time (if it's gone, the first one), unless the address is in another one.
+        const { me, workspaces, workspace, target } = await loadEntry(
+          server(session),
+          remembered(WORKSPACE_KEY),
+          back,
+        );
+        saveSession(session);
         setWorkspace(workspace);
         setLanguage(me.prefs.language);
         setAppearance(me.prefs.appearance);
@@ -127,7 +101,7 @@ function App() {
     if (typeof at === "object" && (at.workspace || !at.channel)) return;
     let stale = false;
     const others = state.workspaces.map((space) => space.id).filter((id) => id !== state.workspace);
-    void settle(path, state.session, [state.workspace, ...others]).then(
+    void settle(path, server(state.session), [state.workspace, ...others]).then(
       (to) => !stale && go(to, true),
     );
     return () => {
