@@ -1,3 +1,4 @@
+import "./csp.ts";
 import "@fontsource/ibm-plex-sans-kr/400.css";
 import "@fontsource/ibm-plex-sans-kr/600.css";
 import "@fontsource/ibm-plex-mono/400.css";
