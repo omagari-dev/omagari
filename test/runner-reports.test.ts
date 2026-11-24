@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { api, call, type ErrorReport } from "@omagari/contract";
 import { checkoutVersion } from "@omagari/contract/version";
 import { runnerPaths } from "@omagari/runner";
-import { eventually, startWorld, tempRepo } from "./harness.ts";
+import { eventually, gitPath, startWorld, tempRepo } from "./harness.ts";
 
 type World = Awaited<ReturnType<typeof startWorld>>;
 
@@ -27,7 +27,8 @@ async function twoFolders(t: { after: (fn: () => Promise<unknown>) => void }) {
   await writeFile(share, "everything\n");
   await writeFile(
     join(world.config, "omagari", "folders.json"),
-    JSON.stringify([world.repo.folder, broken.folder]),
+    // As the session-start hook keeps them: Git's top level, which uses / on Windows. Any other spelling isn't a live repo folder, and it's dropped.
+    JSON.stringify([gitPath(world.repo.folder), gitPath(broken.folder)]),
   );
   return { world, broken: broken.folder, queue: join(world.config, "omagari", "reports.json") };
 }
@@ -64,8 +65,9 @@ test("a runner that fails for real shows up in the operator's list as the runner
   assert.equal(row.arch, process.arch);
   assert.equal(row.runtime, `Node ${process.versions.node}`);
   assert.match(row.message, /^Share level must be one of .+: everything \(<repo>/);
-  assert.ok(!JSON.stringify(row).includes(broken), "The folder isn't in the report");
-  assert.ok(row.stack.some((line) => line.includes("packages/cli/src")));
+  for (const spelled of [broken, gitPath(broken), JSON.stringify(broken).slice(1, -1)])
+    assert.ok(!JSON.stringify(row).includes(spelled), "The folder isn't in the report");
+  assert.ok(row.stack.some((line) => line.replaceAll("\\", "/").includes("packages/cli/src")));
   // Sent, so nothing waits on the machine.
   assert.deepEqual(await queued(queue), []);
 });
@@ -127,7 +129,9 @@ test("while the server refuses reports, the runner sends none and drops the ones
   await first.output(/Couldn't start the runner for .+: Share level must be one of/);
   await online(world);
   await eventually(async () => assert.deepEqual(await queued(queue), [], "Still waiting"));
-  await first.stop("SIGTERM");
+  // Windows has no SIGTERM between processes, so there it's asked over its pipe (ADR-0060).
+  if (process.platform === "win32") await world.cli("runner", "stop").then(() => first.exited);
+  else await first.stop("SIGTERM");
 
   // Once reports are taken again, a new failure goes, but what was dropped never comes back.
   await call(world.owner, api.refuseReports, { off: false });
