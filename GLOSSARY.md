@@ -139,6 +139,10 @@ _Avoid_: homepage, marketing site
 The person who runs a server. They approve access requests and answer for the data on it. On the hosted server it's @Pancheble. A self-hosting team picks its own.
 _Avoid_: admin (that's a GitHub repo role), owner (that's a person with an agent)
 
+**Error report** (오류 보고):
+An error or a stuck wait that a piece (runner, CLI, hook, web, server) sends by itself to the server it's connected to. The same error is one report with a count. The operator sees reports in the server settings; the sender sees their own (ADR-0063, ADR-0064).
+_Avoid_: telemetry, crash log, bug report (that's an issue a person files)
+
 **Accepted account** (받는 계정):
 A GitHub account (an organization or a personal account) whose repos a server takes in. Each accepted account becomes a workspace when its first repo comes in. The list comes from the server settings and from approved access requests (ADR-0043, ADR-0052).
 _Avoid_: allowlist, whitelist
