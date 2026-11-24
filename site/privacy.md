@@ -4,7 +4,7 @@
 
 This policy is for the **hosted Omagari server** at `app.omagari.org`. If your team runs its own server, your team's operator decides what's stored there, and this policy doesn't apply.
 
-Last updated: 2026-11-22 · In force from: 2026-11-21
+Last updated: 2026-11-24 · In force from: 2026-11-24
 
 ## 1. Who we are
 
@@ -24,12 +24,16 @@ We store what the server needs to show your team who's working on what and to le
 | One-line status, presence, status message and emoji, your settings | Showing it to your team, and your settings across devices |
 | Chat messages, Q&A, forum posts, reactions, and the debate patches (diffs up to 64 KB) | The conversation and decisions in the workspace |
 | Which day you opened the app, per workspace (login and date) | Counting active use |
+| Error reports from your runner, CLI, hooks and web app, and the server's own unexpected errors, and screens stuck for over a minute (which screen and step, and how long it waited): the piece and its version, OS and architecture, Node or browser version, the command or screen, the error's name and message, up to 20 stack lines, how many times it happened, and when it was first and last seen. Paths and token-like text are masked before they're sent, but masking can miss an unusual shape. The server keeps your GitHub login with each report; the operator sees it only if you turn on "Attach my name" | Finding and fixing bugs. Your login is kept so you can see and delete your own reports |
 
 We don't ask for your email, phone number, or payment details. The server sets no tracking cookies: the web app keeps your sign-in and a few picks in the browser's local storage.
+
+Error reports never include file contents, tokens, command arguments, repo or branch names, or environment variables. When the operator opens a report as a GitHub issue, nothing goes to GitHub by itself: a prefilled new-issue page opens, and the masked report text reaches GitHub only when the operator submits it there. Your login is never included.
 
 ## 3. How long we keep it
 
 - **Changed-file content and debate patches**: deleted once their branch is gone or hasn't changed for **30 days**.
+- **Error reports**: deleted **30 days** after they were last seen, or sooner when you delete one or the operator marks it resolved.
 - **Chat, Q&A, and posts**: until they're deleted or the workspace, repo, or account is deleted.
 - **Tokens and sessions**: until you sign out or delete your account. GitHub's own tokens expire after 8 hours and are refreshed; the refresh token lasts up to 6 months.
 - **Daily visit records, and pending or denied access requests**: for 12 months, or until the workspace or account is deleted if that comes first. Approved access requests are kept while the account stays accepted, so it stays accepted after a restart.
@@ -40,6 +44,7 @@ We don't ask for your email, phone number, or payment details. The server sets n
 You don't need to email us to delete.
 
 - **Your account** (Settings): your tokens, sessions, profile, presence, works, and settings are deleted. Your old messages stay and show as a deleted member, so conversations still read. To have messages removed too, email us.
+- **Your error reports** (Settings): you can see the reports you sent and delete them. To stop sending them, turn error reports off in personal settings. On a machine, `OMAGARI_NO_ERROR_REPORTS=1` or `DO_NOT_TRACK=1` stops the runner, CLI, and hooks from sending anything.
 - **A repo's data**: a GitHub Admin of the repo removes the repo and deletes its data.
 - **A workspace**: a person who is a GitHub Admin of every repo in it deletes the workspace. (Omagari doesn't read organization roles.)
 - **Changed-file content and patches** also delete themselves after 30 days (section 3).
@@ -54,7 +59,7 @@ The server and these services are outside Korea, so personal information moves a
 
 | | Fly.io | GitHub | GIPHY |
 | --- | --- | --- | --- |
-| Items sent | Everything the server stores (section 2) | GitHub login, tokens, repo names, and the decision PRs, issues, and labels the server writes to GitHub | When you use GIFs, your browser connects to GIPHY directly, so GIPHY gets your IP address, browser info, and the words you search for. We don't see or store your search words. |
+| Items sent | Everything the server stores (section 2) | GitHub login, tokens, repo names, the decision PRs, issues, and labels the server writes to GitHub, and the masked text of error reports the operator submits as issues (never your login) | When you use GIFs, your browser connects to GIPHY directly, so GIPHY gets your IP address, browser info, and the words you search for. We don't see or store your search words. |
 | Country, when, how | Japan (the server is in Tokyo; the company is in the USA). Over the network, all the time you use the service | USA and others. Over the network, whenever you sign in or use a GitHub feature | USA. Over the network, straight from your browser, whenever you search or view a GIF |
 | Recipient and contact | Fly.io, Inc. · compliance@fly.io | GitHub, Inc. · privacy contact form (linked from GitHub's privacy statement) | GIPHY, Inc. · support@giphy.com |
 | Their purpose and retention | Running the server and disk. Until we delete it; disk snapshots 5 days | Sign-in and repo access. Under GitHub's own policy | GIF search and images. Under GIPHY's own policy |
