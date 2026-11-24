@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { cpus } from "node:os";
+import { promisify } from "node:util";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -20,6 +22,9 @@ const CHECK2 = "if [ -e src/draft.ts ] && grep -q currency src/pay.ts; then echo
  * This is the gap after a fix and before the new run when the "stale result" alert shows, so if it is too short, polling misses it on a slow machine (#241).
  */
 const QUIET_MS = 1500;
+
+/** How long to wait for a merge-run verdict. Runs go one at a time, and a verdict can need the merged run plus both sides, each with a dozen Git calls and a shell start. On the Windows runner this test took 63 s to 141 s on the same commit, so 30 s was not enough. */
+const RUN_WAIT_MS = 90_000;
 
 const PAY = `export function pay(amount: number) {
   return amount;
@@ -118,7 +123,7 @@ const alertWith = (as: As, login: string, check: (alert: Indirect) => void = () 
     const [alert] = found as [Indirect];
     check(alert);
     return alert;
-  }, 30_000);
+  }, RUN_WAIT_MS);
 
 /** Wait until an indirect conflict alert with `login` passes the merge run and closes as lifted. The passed check command remains. */
 const closedWith = (as: As, login: string) =>
@@ -131,7 +136,7 @@ const closedWith = (as: As, login: string) =>
     assert.equal(last.run?.verdict, "pass");
     assert.equal(last.run?.check, "sh check.sh");
     return last;
-  }, 30_000);
+  }, RUN_WAIT_MS);
 
 /** Only the news lines of the mailbox in the added text (the CLI's reply). */
 const inboxLines = (output: string) =>
@@ -289,7 +294,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo "pay
     const last = found.at(-1);
     assert.equal(last?.run?.verdict, "pass", JSON.stringify(found));
     assert.notEqual(last?.run?.fingerprint, passed.run?.fingerprint);
-  }, 30_000);
+  }, RUN_WAIT_MS);
 
   // The merged runs stay in the run log: two works, check command, verdict.
   const log = (await world.cli("runner", "log")).stdout;
@@ -451,6 +456,13 @@ test("when the merge breaks, the two works are run separately to sort it out: it
   });
   t.after(world.stop);
   fake.blocksUnixSockets = true; // like Linux
+  const T0 = Date.now(); // TEMP
+  const tm = (l: string) => console.log(`TIMING ${l} +${Date.now() - T0}ms calls=${fake.calls.length}`); // TEMP
+  for (const [c, a] of [["sh", ["-c", "true"]], ["git", ["--version"]]] as const) { // TEMP
+    const t1 = Date.now();
+    for (let i = 0; i < 5; i++) await promisify(execFile)(c, [...a]);
+    console.log(`TIMING spawn ${c} avg ${(Date.now() - t1) / 5}ms cpus=${cpus().length}`);
+  }
   const hold = (await place(t))("hold");
   // The merged one breaks if bob's currency and the owner's pay(1) are together. The side with a marker file breaks even alone. While `hold` exists it waits.
   await base(world, {
@@ -463,6 +475,7 @@ if [ -e src/bob-oops ]; then echo breaks even alone; exit 1; fi
 if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo breaks when merged; exit 1; fi
 `,
   });
+  tm("world+base");
   const { git, folder } = world.repo;
   await git("switch", "--create", "payment");
   const DRAFT = `import { pay } from "./pay";\npay(1);\n`;
@@ -574,6 +587,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo brea
     assert.equal(await brokenMark(world, "owner", "payment"), false);
     assert.equal(await brokenMark(world, "bob", "currency"), false);
   });
+  tm("resolved");
   // While the content stays the same it doesn't stand again.
   await sleep(QUIET_MS * 2);
   const open = async () => (await indirect(world.owner)).filter((a) => a.resolved === null);
@@ -582,10 +596,11 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo brea
   // Even if the content changes it doesn't stand until the re-run verdict comes. If the re-run breaks, a new Confirmed alert stands.
   await writeFile(hold, "");
   await write("src/draft.ts", `${DRAFT}pay(2);\n`);
-  await eventually(() => assert.equal(fake.calls.length, 9), 30_000);
+  await eventually(() => assert.equal(fake.calls.length, 9), RUN_WAIT_MS);
   await sleep(QUIET_MS);
   assert.deepEqual(await open(), []);
   await rm(hold);
+  tm("hold released");
   const again = await alertWith(world.owner, "bob", (a) => assert.equal(a.run?.verdict, "broken"));
   assert.equal(await withBob(), 2);
   assert.equal(again.confirmed, true);
@@ -598,6 +613,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo brea
   });
 
   // If Confirmed is lifted (can't be sorted out) and it drops to reference, the issue isn't closed while an alert remains. Confirmed is removed from the post and the issue.
+  tm("owner-oops1");
   await write("src/owner-oops", "");
   await alertWith(world.owner, "bob", (a) => assert.equal(a.run?.verdict, "unclear"));
   await eventually(async () => {
@@ -611,12 +627,15 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo brea
 
   // After closing on a pass again, if cannot-tell comes up, a new guessed alert stands. Both were run before with the same content, so the old verdicts are reused.
   await write("src/draft.ts", DRAFT.replace("pay(1);", 'pay(1, "krw");'));
+  tm("before closed2");
   await closedWith(world.owner, "bob");
+  tm("closed2");
   await write("src/draft.ts", DRAFT);
   await write("src/owner-oops", "");
   const unclear = await alertWith(world.owner, "bob", (a) =>
     assert.equal(a.run?.verdict, "unclear"),
   );
+  tm("unclear2");
   assert.equal(await withBob(), 3);
   assert.equal(unclear.confirmed, false);
 
