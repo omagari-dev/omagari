@@ -52,7 +52,7 @@ A few tools already cover a piece of this. Omagari puts the pieces in one flow: 
 
 Omagari's way of watching the repo follows Room's behavior. Room is under a noncommercial license, so we looked at what it does and wrote new code.
 
-<sub>Checked against each project's README and docs on 2026-11-25 (Cursor's row against its blog posts). If something is wrong, tell us in Issues.</sub>
+<sub>Checked against each project's README and docs on 2026-11-19, and Cursor's row against its blog posts on 2026-11-25. If something is wrong, tell us in Issues. If something is wrong, tell us in Issues.</sub>
 
 ## Hosted or self-hosted
 
