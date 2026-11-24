@@ -72,3 +72,34 @@ test("a workspace over its stored size can't write more, and another workspace s
   await assert.rejects(call(inA, api.send, { channel: a, text: "hi" }), hit("storage", 0.01));
   await call(inB, api.send, { channel: b, text: "hi" });
 });
+
+test("adding a repo reads GitHub access for the added repo only", async (t) => {
+  const world = await startWorld();
+  t.after(world.stop);
+  world.github.admin("owner", REPO2);
+  world.github.grant("owner", REPO2);
+  const before = world.github.pushAsked.length;
+  await call(world.owner, api.addRepo, { repo: REPO2 });
+  const asked = world.github.pushAsked.slice(before);
+  assert.ok(asked.includes(REPO2));
+  assert.ok(
+    asked.every((repo) => repo === REPO2),
+    asked.join(),
+  );
+});
+
+test("one person can have only a few access requests waiting", async (t) => {
+  const world = await startWorld({ operators: ["Owner"] });
+  t.after(world.stop);
+  world.github.grant("carol", REPO3);
+  const carol = await world.login("carol");
+  for (const account of ["a-one", "a-two", "a-three"])
+    await call(carol, api.requestAccess, { account, agree: true });
+  await assert.rejects(
+    call(carol, api.requestAccess, { account: "a-four", agree: true }),
+    (error: ContractFailure) => error.code === "invalid_request",
+  );
+  // Asking again for one already waiting is still fine.
+  await call(carol, api.requestAccess, { account: "a-one", agree: true });
+  assert.equal((await call(carol, api.myAccess)).requests.length, 3);
+});

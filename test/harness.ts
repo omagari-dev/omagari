@@ -244,6 +244,8 @@ export function fakeGitHub() {
   /** Push access and Admin. `repo login`. */
   const pushers = new Set<string>();
   const gates = new Map<string, Promise<void>>();
+  /** The repos `canPush` was asked about, in order. */
+  const pushAsked: string[] = [];
   const admins = new Set<string>();
   /** Repos in this fake and the old names of moved repos (`move`). Like GitHub, an old name redirects to the new repo. */
   const known = new Set(REPOS);
@@ -373,6 +375,7 @@ export function fakeGitHub() {
       };
     },
     async canPush(token, asked) {
+      pushAsked.push(asked);
       await gates.get(`${asked} ${tokens.get(token)}`);
       // Like GitHub, the old name of a moved repo redirects to the new repo.
       const repo = moves.get(asked) ?? asked;
@@ -650,6 +653,8 @@ export function fakeGitHub() {
       gates.set(`${repo} ${login}`, gate.promise);
       return () => gate.resolve();
     },
+    /** The repos `canPush` was asked about so far. */
+    pushAsked,
     grant: (login: string, repo = REPO) => pushers.add(`${repo} ${login}`),
     revoke: (login: string, repo = REPO) => pushers.delete(`${repo} ${login}`),
     /** Creates repo `repo` in GitHub (a repo before it is put into the workspace). */

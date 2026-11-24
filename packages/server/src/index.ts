@@ -57,6 +57,7 @@ import {
   type Label,
   type LIMITS,
   LIVE_SOCKET,
+  MAX_CLAIMS,
   MAX_FRAME_BYTES,
   MERGE_RUN_LABELS,
   type MemberView,
@@ -3218,6 +3219,8 @@ export async function startServer(options: {
   });
 
   const limits = options.limits ?? {};
+  /** Access requests one person can have waiting. */
+  const MAX_PENDING_REQUESTS = 3;
   const LIMITED = {
     requests: (max: number) => `Hit the limit of ${max} requests a minute. Try again in a minute`,
     repos: (max: number) => `This workspace can have up to ${max} repos. Remove one to add another`,
@@ -3286,10 +3289,15 @@ export async function startServer(options: {
    * Reads with `token` whether the member has push access to each repo in the workspace and records it (ADR-0043). For repos GitHub didn't answer, keeps the old value.
    * `push` is the repos with access, `unknown` the repos it didn't answer for.
    */
-  const readAccess = async (login: string, token: string, session?: string) => {
+  const readAccess = async (
+    login: string,
+    token: string,
+    session?: string,
+    only: string[] = allRepos(),
+  ) => {
     const push: string[] = [];
     const unknown: string[] = [];
-    for (let repo of allRepos()) {
+    for (let repo of only) {
       let can = await github.canPush(token, repo);
       if (stopped) break;
       // With `session`: a "no" from a token that was replaced, expired, or whose session ended (GitHub answers 401) says nothing about permission (#483).
@@ -3567,7 +3575,7 @@ export async function startServer(options: {
       .name;
     ensureWorkspace(name);
     seedLabels(name);
-    // Read push access now for each member who's in, without waiting for the next check.
+    // Read push access to the added repo now for each member who's in, without waiting for the next check. The other repos are left to it.
     await Promise.all(
       (
         db
@@ -3576,7 +3584,7 @@ export async function startServer(options: {
           login: string;
           token: string;
         }[]
-      ).map(({ login, token }) => readAccess(login, token)),
+      ).map(({ login, token }) => readAccess(login, token, undefined, [name])),
     );
     shareSituation();
     syncSoon();
@@ -3840,6 +3848,15 @@ export async function startServer(options: {
         )
         .get(login, wanted)
     ) {
+      // One person can have only a few requests waiting.
+      const waiting = db
+        .prepare("SELECT COUNT(*) AS n FROM access_requests WHERE login = ? AND state = 'pending'")
+        .get(login) as { n: number };
+      if (waiting.n >= MAX_PENDING_REQUESTS)
+        throw new ContractFailure({
+          code: "invalid_request",
+          message: `You have ${MAX_PENDING_REQUESTS} requests waiting. Wait for an answer before asking for another account`,
+        });
       const { lastInsertRowid } = db
         .prepare(
           "INSERT INTO access_requests (account, login, state, at) VALUES (?, ?, 'pending', ?)",
@@ -5642,6 +5659,24 @@ export async function startServer(options: {
             `DELETE FROM claims WHERE repo = ? AND login = ? AND branch = ? AND path = ? AND unit = ?
              AND symbol IS ? AND lines IS ?`,
           ).run(repo, login, branch, path, unit, symbol ?? null, linesJson);
+          const kept = db
+            .prepare("SELECT COUNT(*) AS n FROM claims WHERE repo = ? AND login = ?")
+            .get(repo, login) as { n: number };
+          if (kept.n >= MAX_CLAIMS) {
+            db.exec("ROLLBACK");
+            socket.send(
+              encode(
+                serverToRunner,
+                "error",
+                {
+                  code: "invalid_request",
+                  message: `Up to ${MAX_CLAIMS} claims in a repo. Release some first`,
+                },
+                message.id,
+              ),
+            );
+            return;
+          }
           // A new plan replaces the old plan on the same symbol in the same work. Its alerts are fixed when the writing runner recomputes them.
           if (plan)
             db.prepare(
