@@ -9,11 +9,11 @@ const { OMAGARI_REPO, GITHUB_CLIENT_ID } = process.env;
 // The list of GitHub accounts to accept (ADR-0043). Split by commas or spaces. `owner/name` accepts that account and is added each time that repo is turned on.
 const list = (value?: string) => (value ?? "").split(/[\s,]+/).filter(Boolean);
 const accept = list(OMAGARI_REPO);
-// GitHub logins that approve access requests (ADR-0052). With operators, accounts can also come in by approved requests, so OMAGARI_REPO may be empty.
+// Operators approve access requests (ADR-0052): `id:<GitHub account id>` (ADR-0062), or a login (bound to its account on first sign-in). With operators, accounts can also come in by approved requests, so OMAGARI_REPO may be empty.
 const operators = list(process.env.OMAGARI_OPERATORS);
 if ((accept.length === 0 && operators.length === 0) || !GITHUB_CLIENT_ID) {
   console.error(
-    "Set OMAGARI_REPO (the list of GitHub accounts to accept: owner or owner/name, separated by commas) or OMAGARI_OPERATORS (GitHub logins that approve access requests), and GITHUB_CLIENT_ID (the GitHub App or OAuth app with device flow on)",
+    "Set OMAGARI_REPO (the list of GitHub accounts to accept: owner or owner/name, separated by commas) or OMAGARI_OPERATORS (id:<GitHub account id> of each operator, separated by commas, approves access requests), and GITHUB_CLIENT_ID (the GitHub App or OAuth app with device flow on)",
   );
   process.exit(1);
 }

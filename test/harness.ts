@@ -1140,7 +1140,12 @@ export async function startWorld(
     },
     /** Shuts down the server and restarts it on the same port with the same DB. Same as the server restarting on a deploy. */
     async restartServer(
-      override: { contentMs?: number; historyMs?: number; tokenKey?: string } = {},
+      override: {
+        contentMs?: number;
+        historyMs?: number;
+        tokenKey?: string;
+        operators?: string[];
+      } = {},
     ) {
       const { port } = new URL(server.url);
       if (!serverDown) await server.stop();

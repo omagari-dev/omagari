@@ -42,12 +42,12 @@ Moving a server from an OAuth app to a GitHub App signs everyone out once: they 
 
 A server can let people ask for their account instead of you adding it to `OMAGARI_REPO` ([ADR-0052](https://github.com/omagari-dev/omagari/blob/dev/docs/adr/0052-hosted-beta-on-the-dogfood-server-by-request.md)).
 
-- `OMAGARI_OPERATORS` is the list of GitHub logins of the server's operators, separated by commas. Without it, the server takes no requests and works as before: someone with no push access to a workspace repo can't sign in.
+- `OMAGARI_OPERATORS` is the list of the server's operators, separated by commas. Write each one as `id:<GitHub account id>`, the number that stays with the account when its name changes ([ADR-0062](https://github.com/omagari-dev/omagari/blob/dev/docs/adr/0062-operators-are-github-account-ids.md)). To find it: `gh api users/<login> --jq .id`. Without it, the server takes no requests and works as before: someone with no push access to a workspace repo can't sign in.
 - With operators set, someone with no workspace can still sign in. The web then shows "Request access": they name a GitHub account (an organization or their own) and send it. They see whether it's waiting, approved, or denied. They only ever see their own requests, never which accounts the server already has.
 - Operators see waiting requests in the web under Settings → Server → Access requests, and approve or deny them. An approved account joins the accepted accounts right away, kept in the database, so it stays after restarts and deploys. Then a GitHub Admin of a repo under it adds the repo, and the workspace appears.
 - `OMAGARI_REPO` still works alongside it. With operators set, it can be empty.
 - `OMAGARI_TERMS_URL` and `OMAGARI_PRIVACY_URL` link the server's terms and privacy policy. When either is set, the request form links them and asks the person to agree before they can send it, and Settings → Info shows them. The hosted server's own pages are [Terms of use](terms.md) and [Privacy policy](privacy.md); they cover only that server, so another operator writes their own.
-- On Fly, set them like the other settings: `fly secrets set OMAGARI_OPERATORS=<login> OMAGARI_TERMS_URL=<url> OMAGARI_PRIVACY_URL=<url> -a "$FLY_APP"`.
+- On Fly, set them like the other settings: `fly secrets set OMAGARI_OPERATORS=id:<id> OMAGARI_TERMS_URL=<url> OMAGARI_PRIVACY_URL=<url> -a "$FLY_APP"`.
 
 `OMAGARI_DB` (default `omagari.db`) and `PORT` (default 3000) change the database file and the port. If members open the web UI at a different address than the one the server listens on, set `OMAGARI_URL`. Decision PRs link back to posts using this address.
 
