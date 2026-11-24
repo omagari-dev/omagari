@@ -21,6 +21,9 @@ const CHECK2 = "if [ -e src/draft.ts ] && grep -q currency src/pay.ts; then echo
  */
 const QUIET_MS = 1500;
 
+/** How long to wait for a merge-run verdict. A verdict needs several runs in a row (the merged one, then each side), and one run takes 2 to 8 s on the Windows runner, more under load. */
+const RUN_WAIT_MS = 90_000;
+
 const PAY = `export function pay(amount: number) {
   return amount;
 }
@@ -118,7 +121,7 @@ const alertWith = (as: As, login: string, check: (alert: Indirect) => void = () 
     const [alert] = found as [Indirect];
     check(alert);
     return alert;
-  }, 30_000);
+  }, RUN_WAIT_MS);
 
 /** Wait until an indirect conflict alert with `login` passes the merge run and closes as lifted. The passed check command remains. */
 const closedWith = (as: As, login: string) =>
@@ -131,7 +134,7 @@ const closedWith = (as: As, login: string) =>
     assert.equal(last.run?.verdict, "pass");
     assert.equal(last.run?.check, "sh check.sh");
     return last;
-  }, 30_000);
+  }, RUN_WAIT_MS);
 
 /** Only the news lines of the mailbox in the added text (the CLI's reply). */
 const inboxLines = (output: string) =>
@@ -289,7 +292,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo "pay
     const last = found.at(-1);
     assert.equal(last?.run?.verdict, "pass", JSON.stringify(found));
     assert.notEqual(last?.run?.fingerprint, passed.run?.fingerprint);
-  }, 30_000);
+  }, RUN_WAIT_MS);
 
   // The merged runs stay in the run log: two works, check command, verdict.
   const log = (await world.cli("runner", "log")).stdout;
@@ -582,7 +585,7 @@ if grep -q currency src/pay.ts && grep -qs "pay(1)" src/draft.ts; then echo brea
   // Even if the content changes it doesn't stand until the re-run verdict comes. If the re-run breaks, a new Confirmed alert stands.
   await writeFile(hold, "");
   await write("src/draft.ts", `${DRAFT}pay(2);\n`);
-  await eventually(() => assert.equal(fake.calls.length, 9), 30_000);
+  await eventually(() => assert.equal(fake.calls.length, 9), RUN_WAIT_MS);
   await sleep(QUIET_MS);
   assert.deepEqual(await open(), []);
   await rm(hold);
