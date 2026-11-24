@@ -510,7 +510,12 @@ grep -rq reason src/ || { echo "no reason"; exit 1; }
 async function experimentDebate(
   t: TestContext,
   answers: { owner: object; alice: object },
-  setup: { check?: boolean; aliceSandbox?: boolean; requested?: boolean } = {},
+  setup: {
+    check?: boolean;
+    aliceSandbox?: boolean;
+    requested?: boolean;
+    mergeCheck?: "unsandboxed";
+  } = {},
 ) {
   const ownerSandbox = fakeSandbox();
   const aliceSandbox = fakeSandbox();
@@ -521,6 +526,7 @@ async function experimentDebate(
     executor: owner.executor,
     sandbox: ownerSandbox.sandbox,
     debateRounds: 1,
+    mergeCheck: setup.mergeCheck,
   });
   t.after(world.stop);
   if (setup.check !== false) {
@@ -584,6 +590,29 @@ async function experimentDebate(
   };
   return { world, desk, debate, stanceOf, ownerSandbox, aliceSandbox };
 }
+
+test(
+  "with merge runs unsandboxed (a person turned it on), a stance's patch is not run as an experiment",
+  process.platform === "win32" ? {} : { skip: "Without a sandbox is only for native Windows" },
+  async (t) => {
+    const { debate, stanceOf } = await experimentDebate(
+      t,
+      {
+        owner: { claim: "add reason", evidence: ["partial refund request"], patch: REASON_PATCH },
+        alice: {
+          claim: "fix the caller",
+          evidence: ["src/money.ts:2 body of refund"],
+          patch: CALLER_PATCH,
+        },
+      },
+      { mergeCheck: "unsandboxed" },
+    );
+    const experiment = stanceOf("add reason").stances[0]?.experiment;
+    assert.equal(experiment?.verdict, "not_run");
+    assert.match(experiment?.reason ?? "", /without a sandbox/);
+    assert.notEqual(debate.conclusion?.by, "experiment");
+  },
+);
 
 test(
   "a patch attached to a stance is applied on top of the two works merged and run in the sandbox, and if only one option passes, it becomes the conclusion before the grounds",

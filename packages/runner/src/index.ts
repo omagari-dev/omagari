@@ -1463,13 +1463,15 @@ export async function startRunner(options: {
         ? `The patch is over ${MAX_PATCH_CHARS} characters`
         : mergeCheck === "off"
           ? "This runner's merge run is turned off (turn it on with omagari runner --merge-check on)"
-          : !work
-            ? "My work isn't observed"
-            : !theirs
-              ? `The other work (${against.login}'s ${against.branch}) isn't observed`
-              : absent && !own?.tree
-                ? (own?.problem ?? "Couldn't set up the absentee's work on this machine")
-                : undefined;
+          : mergeCheck === "unsandboxed"
+            ? "Debate experiments don't run without a sandbox (ADR-0059)"
+            : !work
+              ? "My work isn't observed"
+              : !theirs
+                ? `The other work (${against.login}'s ${against.branch}) isn't observed`
+                : absent && !own?.tree
+                  ? (own?.problem ?? "Couldn't set up the absentee's work on this machine")
+                  : undefined;
     const result =
       skipped !== undefined || !work || !theirs
         ? {
