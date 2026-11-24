@@ -1,4 +1,4 @@
-# Error reports grilling: questions, what we answered ourselves, what's open
+# Stage 9 grilling (error reports): questions, what we answered ourselves, what's open
 
 The scope: Omagari's pieces report their own errors, so small bugs on members' machines (Windows above all) reach whoever runs the server without someone filing them. The input is @Pancheble's question on 2026-11-24, after #520 (a new person stuck on the sign-in wait screen, fixed in #521): could small bugs like this report themselves?
 

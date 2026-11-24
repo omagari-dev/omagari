@@ -4,7 +4,7 @@ status: accepted
 
 # Short waits say when they're stuck and send a report
 
-#520 threw no error: after approving on GitHub, the sign-in screen showed "Waiting for you to approve on GitHub…" forever. Error reports (ADR-0063) can't catch that. @Pancheble decided on 2026-11-24 (`docs/error-reports-questions.md` Q5) that waits which should end in seconds notice when they don't.
+#520 threw no error: after approving on GitHub, the sign-in screen showed "Waiting for you to approve on GitHub…" forever. Error reports (ADR-0063) can't catch that. @Pancheble decided on 2026-11-24 (`docs/stage9-questions.md` Q5) that waits which should end in seconds notice when they don't.
 
 - **Which waits.** Only waits that should end within seconds: the sign-in screen after GitHub returned a session or after the person said they approved, and the blank "checking" screen while the web loads who you are and your workspaces. Waits that are meant to be long stay as they are: an access request waiting for an operator, a merge run, an agent's answer.
 - **After 1 minute** the screen says it's taking longer than it should and offers "Try again". At the same moment it sends a stuck report (an error report of kind `stuck`) with the screen and the step it was on, and how long it waited. Pressing "Try again" doesn't send another.
