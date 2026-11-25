@@ -507,7 +507,24 @@ export async function codexReady() {
   const ready = () =>
     execShim("codex", ["login", "status"], { env: codexEnv() }).then(
       () => true,
-      () => false,
+      (error) => {
+        // PROBE-544 (temporary)
+        if (process.env.OMAGARI_PROBE_544)
+          console.error(
+            "PROBE",
+            JSON.stringify({
+              codexDir,
+              ProgramFiles: process.env.ProgramFiles,
+              found: onPath("codex", codexEnv() ?? process.env),
+              pathKeys: Object.keys(codexEnv() ?? process.env).filter((k) => /^path$/i.test(k)),
+              code: error.code,
+              stderr: error.stderr,
+              stdout: error.stdout,
+              message: String(error.message).slice(0, 400),
+            }),
+          );
+        return false;
+      },
     );
   if (await ready()) return true;
   for (const dir of await codexAppDirs()) {

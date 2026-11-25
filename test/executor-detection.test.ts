@@ -58,8 +58,16 @@ test("a runner finds Codex in the desktop app's folder when it isn't on PATH, an
   );
   await writer(world.codex)("auth.json", "{}");
 
-  const out = world.launchCliWith({ PATH: bare(), ProgramFiles: root }, desk.folder, "runner");
+  const out = world.launchCliWith(
+    { PATH: bare(), ProgramFiles: root, OMAGARI_PROBE_544: "1" },
+    desk.folder,
+    "runner",
+  );
   t.after(() => out.stop("SIGKILL"));
+  console.error(
+    "PROBE dirs",
+    JSON.stringify(await (await import("node:fs/promises")).readdir(resources)),
+  );
   await out.output(/Agents: Codex\n/);
   await eventually(async () => assert.deepEqual(await agentsOf(world, "alice"), ["codex"]));
 });
