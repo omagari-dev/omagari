@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { clearDemoNote, clearLimit, useDemoNote, useLimit } from "./api.ts";
 import { t } from "./i18n.ts";
 import { INSTALL_COMMAND } from "./install.ts";
+import { watchStuck } from "./report.ts";
 import { shortVersion } from "./runner-update.ts";
 
 const DOCS = "https://omagari.org";
@@ -449,8 +450,11 @@ export function UpdateCard({
   const updating = asking || update?.state === "updating";
   useEffect(() => {
     if (!updating) return;
-    const timer = setTimeout(() => setLate(true), UPDATE_WAIT_MS);
-    return () => clearTimeout(timer);
+    return watchStuck(
+      "runner update / waiting for the runner",
+      () => setLate(true),
+      UPDATE_WAIT_MS,
+    );
   }, [updating]);
   const press = async () => {
     setAsking(true);

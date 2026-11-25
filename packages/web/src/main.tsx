@@ -24,6 +24,8 @@ import {
 import { loadEntry, settle } from "./enter.ts";
 import { setLanguage, t, useLanguage } from "./i18n.ts";
 import { Centered, Login } from "./login.tsx";
+import { listenForErrors, reportingFor } from "./report.ts";
+import { Boundary, Stuck } from "./stuck.tsx";
 import { setAppearance } from "./theme.ts";
 import { Tooltip } from "./tooltip.tsx";
 import { Workspace } from "./workspace.tsx";
@@ -123,7 +125,22 @@ function App() {
     setState({ ...state, workspace: addressed });
   }, [state, addressed]);
 
-  if (state.kind === "checking") return <main className="centered" aria-busy="true" />;
+  const signedIn = state.kind === "in" ? state.session : undefined;
+  const switchOn = state.kind === "in" ? state.me.prefs.reports : true;
+  // Reports wait for a session; the live switch comes from the workspace once it's open.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the switch is read when the session starts
+  useEffect(() => reportingFor(signedIn, switchOn), [signedIn]);
+
+  if (state.kind === "checking")
+    return (
+      <Centered>
+        <div aria-busy="true" />
+        <Stuck
+          where="loading / checking who you are"
+          onRetry={() => void enter(savedSession() ?? "")}
+        />
+      </Centered>
+    );
   if (state.kind === "out") return <Login notice={state.notice} onSession={enter} />;
   if (state.kind === "unreachable") {
     return (
@@ -198,9 +215,12 @@ function App() {
 // The static demo answers the API in the browser (ADR-0058). Only the demo build has it.
 if (import.meta.env.MODE === "demo") await import("./demo.ts");
 followLinks();
+listenForErrors();
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
-    <App />
-    <Tooltip />
+    <Boundary>
+      <App />
+      <Tooltip />
+    </Boundary>
   </StrictMode>,
 );
