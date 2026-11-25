@@ -19,6 +19,7 @@ Working in a team with agents makes code faster, but the things people need to l
 
 - It's common even in human teams. A study of the history of 9 open source projects found text conflicts in 16% of merges, and one in three conflicts showed up not in the text but in the build or tests (Crystal)
 - Agents can't yet line things up by themselves. When two coding agents cooperate, the success rate was 25%, about half of what one agent got doing both jobs (CooperBench)
+- Passing alone isn't enough. In stale's constructed tasks using real Django helpers, patches that each passed alone failed when combined in 97% of runs, and a message describing the completed concurrent change recovered 82% of those runs (stale)
 - Several tools have appeared for the same problem: Room, mcp-git-coord, memlay, AgentHelm, GitHub Copilot Memory, Cursor Projects
 
 ## 3. Today it's all separate
@@ -108,7 +109,7 @@ How we detect, where we store, and in what order we build is in the Omagari v3 i
 - **Nobody moves over**: teams are already on Discord and Slack. Having everything in one place has to be worth more than the cost of moving
 - **GitHub and Cursor build the space too**: GitHub has Agent HQ, which runs agents from several vendors in one place, and Copilot Memory. Cursor made Projects multiplayer on 2026-11-10, with a shared task board and shared context for teammates' agents. What's left for us is staying vendor-neutral and the flow between people
 - **The debate doesn't help**: research says it's a bad starting point. So we build it last, and keep it only if it beats sending alerts alone
-- **Conflicts are rare**: we measure first, and if they're rare we only build alerts and decision records
+- **Conflicts are rare**: we measure first, and if they're rare we only build alerts and decision records. Counter-evidence: in stale's mined tier of reviewed merged PR pairs (417 Django pairs, 834 runs), only one run showed interference after the grading was corrected, though the paper notes its constructed failure rates don't estimate real-world rates
 - **Alert overload**: we measure precision and narrow the conditions for calling a debate
 
 ## 9. What changed from v2
@@ -129,6 +130,11 @@ How we detect, where we store, and in what order we build is in the Omagari v3 i
 
 - [Crystal: Proactive Detection of Collaboration Conflicts](https://homes.cs.washington.edu/~mernst/pubs/vc-conflicts-fse2011.pdf)
 - [CooperBench](https://arxiv.org/html/2601.13295v1)
+- [NP-Bench: Verifying Coordination in Parallel Coding Agents](https://arxiv.org/abs/2610.07261) (arXiv 2610.07261)
+- [stale: Passes Alone, Fails Together](https://arxiv.org/abs/2609.25396) (arXiv 2609.25396)
+- [STORM: Multi-agent Collaboration with State Management](https://arxiv.org/abs/2605.20563) (arXiv 2605.20563)
+- [AECP: Artifact-Exclusive Communication Protocol](https://arxiv.org/abs/2610.06481) (arXiv 2610.06481)
+- [Claim Plane: Reliability Gains and the Limits of Selective Concurrency for Parallel Coding Agents](https://arxiv.org/abs/2608.00947) (arXiv 2608.00947)
 - [Mintzberg's coordination mechanisms](https://kamyarshah.com/mintzbergs-organizational-structure-a-blueprint-for-business-efficiency-and-strategic-growth/)
 - [How Apache projects use consensus](https://community.apache.org/blog/how_apache_projects_use_consensus.html)
 - [Ship / Show / Ask](https://martinfowler.com/tags/version%20control.html)
@@ -143,4 +149,6 @@ How we detect, where we store, and in what order we build is in the Omagari v3 i
 - [mcp-git-coord](https://github.com/OperatingSystem-1/mcp-git-coord)
 - [memlay](https://docs.rs/crate/memlay/0.1.3)
 - [SyncVibe](https://github.com/Curious1008/syncvibe)
+- [Merget](https://merget.ai/)
+- [Clash](https://github.com/clash-sh/clash)
 - [Rule of three](<https://en.wikipedia.org/wiki/Rule_of_three_(computer_programming)>)

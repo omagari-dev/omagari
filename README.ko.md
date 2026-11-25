@@ -48,11 +48,13 @@ Omagari는 에이전트를 대신 돌려 주지 않고, 일하는 방식을 정�
 | [SyncVibe](https://github.com/Curious1008/syncvibe) | 초대 코드로 들어가는 공유 방 | 이 도구의 일이 아니에요. 각자의 에이전트가 자기 체크아웃에서 일해요 | 채팅 하나, @멘션하면 친구의 에이전트가 움직여요 |
 | [GitHub Agent HQ](https://github.blog/news-insights/product-news/welcome-home-agents/) | 에이전트를 맡기고 지켜보는 GitHub의 관제 화면 | 이 도구의 일이 아니에요. 팀원 각자의 에이전트가 아니라 에이전트들을 관리해요 | 이슈와 PR |
 | [Cursor Projects](https://cursor.com/blog/projects-multiplayer) | Cursor의 멀티플레이어 Projects. 클라우드나 멤버 기기에서 에이전트가 돌아요 | 코디네이터가 겹치는 일을 일찍 찾아요 | 작업마다 PR이 달린 공유 작업 보드가 있고, 모든 에이전트가 읽는 공유 맥락이 있어요 |
+| [Merget](https://merget.ai/) | GitHub에서 AI 에이전트들이 동시에 낸 PR을 줄 세워 합쳐 주는 호스팅 머지 큐 | 열린 PR끼리의 충돌을 찾아서 큐 순서대로 해결해요 | 이 도구의 일이 아니에요. 필수 검사와 리뷰가 머지를 정해요 |
+| [Clash](https://github.com/clash-sh/clash) | git 워크트리용 오픈소스 CLI. Claude Code 플러그인과 훅이 있어요 | 워크트리 쌍마다 3-way 병합을 흉내 내서 충돌 파일을 보여줘요. 읽기 전용이에요 | 이 도구의 일이 아니에요. 충돌을 찾아 알려 주고, 아직 해결하지는 않아요 |
 | **Omagari** | 웹 공간, 그리고 멤버 기기의 러너와 훅 | 직접 충돌, 간접 충돌, 중복 구현을 합쳐서 검사 명령을 돌려 확인해요 | 채널, 포럼, 팀원과 에이전트와의 문답. 결정은 GitHub PR이 돼요 |
 
 Omagari가 레포를 지켜보는 방식은 Room의 동작을 따라요. Room은 비상업 라이선스라서, 하는 일을 보고 코드는 새로 썼어요.
 
-<sub>2026-11-19에 각 프로젝트의 README와 문서로, Cursor 행은 2026-11-25에 블로그 글로 확인했어요. 틀린 곳이 있으면 Issues에 알려 줘요.</sub>
+<sub>2026-11-19에 각 프로젝트의 README와 문서로, Cursor 행은 2026-11-25에 블로그 글로, Merget과 Clash 행은 2026-11-25에 merget.ai와 Clash README로 확인했어요. 틀린 곳이 있으면 Issues에 알려 줘요.</sub>
 
 ## 베타 서버 vs 직접 띄우기
 
