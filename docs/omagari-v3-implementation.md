@@ -364,6 +364,8 @@ All we keep is decisions. Decisions go into `docs/decisions/` on the base branch
 - **Does coordination really happen**: among pairs of people who needed to coordinate because of a code dependency, the share who actually talked in the space (socio-technical congruence)
 - **Do people read decisions**: how often the decision inbox is opened, the share that got objections
 - **Outcomes**: merges broken by contracts and decisions reversed, before and after adoption
+- **Alert timing**: the share of alerts about a file that the agent saw before its first edit to that file, not after
+- **Read-to-edit rate**: the share of files the agent read in a session that it also edited in that session
 
 ## 13. Open items
 
@@ -382,6 +384,7 @@ All we keep is decisions. Decisions go into `docs/decisions/` on the base branch
 - [x] How the receiving side consents to the cost of `omagari ask` (stage 2) → a switch on the receiving side, default on (ADR-0024)
 - [ ] Which repo a decision that spans several repos goes in. The direction is the home repo the workspace picks (like the source repo of a GitHub organization's discussions, ADR-0043). We'll build it after dogfooding with two or more repos
 - [ ] What to show when a related code PR merges before the decision is made
+- [ ] Which hook events count as "saw the alert" (delivered, or the agent acted on it) and as "edited the file", for the two timing metrics in section 12
 
 * [ ] A draft PR can only be opened with a commit. What to commit first when starting work
 * [x] Whether forking a work session read-only (what debates use) also works on Codex. In the 2026-11-17 hand check (#203, codex-cli 0.167.1), the context came in with `codex exec fork`, the original session stayed as it was, and read-only held (section 1). We wired it into the runner (#232)
