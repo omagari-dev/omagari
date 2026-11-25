@@ -34,7 +34,9 @@ const MODELS = [
   { value: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5" },
 ];
 
-if (args.includes("--input-format=stream-json")) {
+if (args[0] === "--version") {
+  console.log("0.0.0 (Fake Claude Code)");
+} else if (args.includes("--input-format=stream-json")) {
   for await (const line of createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
     if (request.request?.subtype !== "initialize") continue;
