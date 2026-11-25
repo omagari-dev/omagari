@@ -195,6 +195,7 @@ Coordination theory sees coordination as "managing dependencies between activiti
 
 - **Split guesses from confirmations**: symbol name matching is a guess and has false positives mixed in. The only things that open a debate are confirmed ones, like a merge run result or a declaration
 - **Scope of the merge run**: we don't run every pair, only pairs with a guessed indirect conflict, and it runs on its own once both works go quiet (ADR-0036). It merges unpushed work too. The runner that calculated the guess, in a temporary worktree, lays the other side's changed files from the server on top of the base commit, merges them with its own local work, and runs the check command (same as Room's merge preview). The check command is read from a file committed to the repo (ADR-0034) and only runs inside a sandbox (ADR-0033). It counts as confirmed when only the merged version breaks (ADR-0035). If the other side's share level isn't full, or a file was left out of observation, that part can't be merged, and the verdict marks the missing files. Pushed work is in the observation too, so it merges the same way
+- **Say what it became**: an indirect conflict alert carries the definition line's text before and after the change, capped at 200 characters each, where the share level sends content (ADR-0065). A file-only warning does no better than none (NP-Bench), and saying what the change became recovers most broken runs ("Passes Alone, Fails Together")
 - **We measure precision**: we record how many of the automatically opened debates were a real problem. If it's low, we narrow the conditions for opening one
 
 ## 7. Debate posts
@@ -396,6 +397,8 @@ All we keep is decisions. Decisions go into `docs/decisions/` on the base branch
 
 - [Crystal: Proactive Detection of Collaboration Conflicts](https://homes.cs.washington.edu/~mernst/pubs/vc-conflicts-fse2011.pdf)
 - [Palantír: Awareness of indirect conflicts](https://www.ase-conferences.org/olbib/p94-sarma.pdf)
+- [NP-Bench (arXiv 2610.07261)](https://arxiv.org/abs/2610.07261)
+- [Passes Alone, Fails Together (arXiv 2609.25396)](https://arxiv.org/abs/2609.25396)
 - [Gutwin & Greenberg, Workspace Awareness](https://dl.eusset.eu/handle/20.500.12015/3612)
 - [Malone & Crowston, The Interdisciplinary Study of Coordination](https://crowston.syr.edu/node/54)
 - [Cataldo & Herbsleb, Coordination Breakdowns](https://par.nsf.gov/servlets/purl/10038372)
