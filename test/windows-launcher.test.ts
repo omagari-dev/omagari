@@ -4,12 +4,13 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { launcher } from "../packages/cli/src/service.ts";
+import { launchArgs, launcher } from "../packages/cli/src/service.ts";
 
 // The task runs `cmd.exe /d /s /c "<launcher>"`; a home folder with non-ASCII letters must not break it (#543).
 for (const [name, folder] of [
   ["Korean letters", "홍길동"],
   ["Latin letters", "üser"],
+  ["letters and a space", "홍길동 üser"],
 ]) {
   test(`the Windows launcher reaches its log with ${name} in its paths`, {
     skip: process.platform !== "win32",
@@ -24,7 +25,7 @@ for (const [name, folder] of [
       file,
       launcher({ args: [process.execPath, script], env: { OMAGARI_PROBE: "ok-한글" }, log }),
     );
-    const result = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${file}"`], {
+    const result = spawnSync("cmd.exe", [launchArgs(file)], {
       windowsVerbatimArguments: true,
       encoding: "utf8",
     });

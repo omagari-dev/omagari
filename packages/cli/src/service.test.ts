@@ -78,7 +78,7 @@ test("the Windows task starts only for this account at its logon, restarts on fa
   assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
   assert.match(
     xml,
-    /<Command>cmd.exe<\/Command><Arguments>\/d \/s \/c "C:\\cfg\\omagari\\runner-launcher.cmd"<\/Arguments>/,
+    /<Command>cmd.exe<\/Command><Arguments>\/d \/s \/c ""C:\\cfg\\omagari\\runner-launcher.cmd""<\/Arguments>/,
   );
 });
 
