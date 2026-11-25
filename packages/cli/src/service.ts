@@ -102,8 +102,8 @@ export async function unregister() {
 
 const taskFile = () => join(configHome(), "omagari", "runner-task.xml");
 const launcherFile = () => join(configHome(), "omagari", "runner-launcher.cmd");
-/** The task and the Run key run `cmd.exe /d /s /c "<launcher>"`. */
-const launchArgs = (file: string) => `/d /s /c "${file}"`;
+/** The task and the Run key run `cmd.exe /d /s /c ""<launcher>""`: `/s` strips one outer pair of quotes, so a path with a space needs a second pair (#560). */
+export const launchArgs = (file: string) => `/d /s /c ""${file}""`;
 /** This account as Task Scheduler names it (DOMAIN\user), so the logon trigger starts the task for this person only. */
 const account = () => `${process.env.USERDOMAIN || hostname()}\\${userInfo().username}`;
 
@@ -168,7 +168,7 @@ async function registerWindows(service: Service) {
     `cmd.exe ${launchArgs(script)}`,
     "/f",
   );
-  spawn(process.env.ComSpec || onPath("cmd.exe"), ["/d", "/s", "/c", `"${script}"`], {
+  spawn(process.env.ComSpec || onPath("cmd.exe"), [launchArgs(script)], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
