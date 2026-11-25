@@ -21,6 +21,12 @@ const eul = (n: number) => ("2459".includes(String(n).at(-1) ?? "") ? "를" : "�
 /** Korean screen text. Same keys as `en.ts`; the `Words` type catches a missing one. 해요체, DESIGN.md "Writing". */
 export const ko: Words = {
   tryAgain: "다시 시도",
+  stuck: "평소보다 오래 걸리고 있어요.",
+  crash: {
+    title: "문제가 생겼어요",
+    body: "새로고침하면 돌아와요. 계속 이러면 운영자에게 알려 주세요.",
+    reload: "새로고침",
+  },
   importance: { reference: "참고", discuss: "논의" },
 
   login: {
@@ -35,6 +41,7 @@ export const ko: Words = {
     copy: "코드 복사",
     copied: "코드를 복사했어요.",
     waiting: "GitHub에서 승인하기를 기다리는 중…",
+    entering: "로그인하는 중…",
     cancel: "취소",
     refusedTitle: "이 워크스페이스에 들어올 수 없어요",
     refusedBody:
