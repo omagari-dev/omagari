@@ -47,11 +47,15 @@ function preEdit(
   const toolInput =
     tool === "Bash"
       ? { command: `echo hi > ${file}`, description: "edit" }
-      : tool === "NotebookEdit"
-        ? { notebook_path: file, new_source: "x" }
-        : tool === "Write"
-          ? { file_path: file, content: "x" }
-          : { file_path: file, old_string: "a", new_string: "b", replace_all: false };
+      : tool === "Read"
+        ? { file_path: file }
+        : tool === "Grep"
+          ? { pattern: "pay", path: world.repo.folder }
+          : tool === "NotebookEdit"
+            ? { notebook_path: file, new_source: "x" }
+            : tool === "Write"
+              ? { file_path: file, content: "x" }
+              : { file_path: file, old_string: "a", new_string: "b", replace_all: false };
   return runHook(
     world,
     {
@@ -326,4 +330,33 @@ test("the hook does not block and injects nothing even if the input is broken, n
   t.after(() => rm(elsewhere, { recursive: true, force: true }));
   assert.equal(await preEdit(world, "a.ts", { cwd: elsewhere }), "");
   assert.equal(await preEdit(world, "../outside.ts"), "");
+});
+
+test("when a file is read, it injects that file's nearby work before the edit, and does not inject it again at the next read or edit; Grep gets none", async (t) => {
+  const world = await startWorld({ observeMs: 50 });
+  t.after(world.stop);
+  await writer(world.repo.folder)("src/pay.ts", text(BASE));
+  await world.repo.git("add", ".");
+  await world.repo.git("commit", "--message=base");
+  await world.repo.git("update-ref", "refs/remotes/origin/main", "HEAD");
+  const desk = await member(world, "alice");
+  t.after(desk.remove);
+  await cloned(world, desk);
+  await desk.git("switch", "--create", "refund");
+  await world.repo.git("switch", "--create", "payment");
+  await writer(world.repo.folder)("src/pay.ts", "mine\n");
+  await writer(desk.folder)("src/pay.ts", text(BASE.toSpliced(2, 1, "LINE 3")));
+
+  const context = await eventually(async () => {
+    const context = await preEdit(world, "src/pay.ts", { tool: "Read" });
+    assert.notEqual(context, "");
+    return context;
+  });
+  assert.match(context, /changing the file you're about to read, "src\/pay.ts"/);
+  assert.deepEqual(nearbyLines(context), [`- alice · branch "refund" · lines 3`]);
+  // Already said at the read, so the same file's next read and its edit are quiet.
+  assert.equal(await preEdit(world, "src/pay.ts", { tool: "Read" }), "");
+  assert.equal(await preEdit(world, "src/pay.ts"), "");
+  // Grep doesn't name a file, so it gets no nearby work.
+  assert.equal(await preEdit(world, "src/pay.ts", { tool: "Grep", session: "s-grep" }), "");
 });

@@ -69,7 +69,7 @@ function service(world: World) {
 }
 
 const SESSION = "11111111-2222-3333-4444-555555555555";
-const EDIT_MATCHER = "Edit|Write|MultiEdit|NotebookEdit|Bash";
+const EDIT_MATCHER = "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash";
 
 const settingsFile = (world: World) => join(world.claude, "settings.json");
 const readSettings = async (world: World): Promise<Settings> =>
@@ -152,7 +152,7 @@ test("one omagari install sets up the two hooks and the status-line skill in Cla
   for (const tool of EDIT_MATCHER.split("|")) {
     assert.equal(matching(settings, "PreToolUse", tool).length, 1, tool);
   }
-  assert.deepEqual(matching(settings, "PreToolUse", "Read"), []);
+  assert.deepEqual(matching(settings, "PreToolUse", "WebFetch"), []);
 
   const [startCommand] = matching(settings, "SessionStart", "startup");
   assert.ok(startCommand);

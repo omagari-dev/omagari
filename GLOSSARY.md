@@ -106,7 +106,7 @@ _Avoid_: interface (on its own), spec
 A hook that gives a work session the current situation once, when it starts.
 
 **Pre-edit hook** (편집 전 훅):
-A hook that gives a work session the nearby work for a file just before it edits that file. It only gives the context when it changed since last time.
+A hook that gives a work session the nearby work for a file just before it reads or edits that file. Reading comes first, so the agent sees it before it changes the file. It only gives the context when it changed since last time.
 _Avoid_: edit hook, pre hook
 
 **Inbox** (편지함):

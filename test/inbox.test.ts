@@ -64,7 +64,9 @@ async function hook(
           tool_input:
             options.tool === "Edit"
               ? { file_path: `${cwd}/${options.path}`, old_string: "a", new_string: "b" }
-              : { command: "npm test" },
+              : options.tool === "Grep"
+                ? { pattern: "pay" }
+                : { command: "npm test" },
           ...(options.agent && { agent_id: options.agent, agent_type: "Explore" }),
         };
   const { code, stdout, stderr } = await world.hook(JSON.stringify(input), {
@@ -210,4 +212,22 @@ test("inbox news seen by a subagent, and the inbox, shell command, changed notif
     25_000,
   );
   assert.equal(await hook(world, { tool: "Bash" }), "");
+});
+
+test("Grep carries only the inbox, with no nearby work", async (t) => {
+  const world = await startWorld({ observeMs: 50 });
+  t.after(world.stop);
+  await base(world);
+  const alice = await clone(world, "alice", "refund");
+  t.after(alice.desk.remove);
+  await payment(world);
+  await writer(alice.desk.folder)("src/pay.ts", text(edit(3, "alice")));
+  await writer(world.repo.folder)("src/pay.ts", text(edit(3, "owner")));
+  const context = await eventually(async () => {
+    const context = await hook(world, { tool: "Grep" });
+    assert.deepEqual(inbox(context), [OWNER_SEES]);
+    return context;
+  });
+  assert.doesNotMatch(context, /omagari-nearby/);
+  assert.equal(await hook(world, { tool: "Grep" }), "");
 });
