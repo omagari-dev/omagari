@@ -179,7 +179,13 @@ function defined(work: Work | WorkView, changes: Definition["change"][]) {
       if (!d.change || !changes.includes(d.change)) continue;
       found.set(d.name, [
         ...(found.get(d.name) ?? []),
-        { path: file.path, line: d.line, role: d.change },
+        {
+          path: file.path,
+          line: d.line,
+          role: d.change,
+          ...(d.before !== undefined && { before: d.before }),
+          ...(d.after !== undefined && { after: d.after }),
+        },
       ]);
     }
   }

@@ -23,7 +23,7 @@ async function base(world: World, files: string[]) {
  * Member `login`'s device. As if they cloned my repo, starts `branch` on my main. Two clones of the same repo.
  * The runner stays off while cloning, so work in a half-cloned repo isn't briefly observed and doesn't raise an alert.
  */
-async function clone(world: World, login: string, branch: string, share?: "declared") {
+async function clone(world: World, login: string, branch: string, share?: "declared" | "intent") {
   world.github.grant(login);
   const as = await world.login(login);
   const desk = await world.desk(as, share);
@@ -511,6 +511,16 @@ const CHECKOUT = `import { pay, refund } from "./pay";
 export const total = pay(1) + refund(2);
 `;
 
+/** refund's definition line before and after the change most tests make. */
+const REFUND_CHANGED = PAY.replace(
+  "refund(amount: number)",
+  "refund(amount: number, reason: string)",
+);
+const REFUND_TEXT = {
+  before: "export function refund(amount: number)",
+  after: "export function refund(amount: number, reason: string)",
+};
+
 /** Puts src/pay.ts and src/checkout.ts on the base commit. */
 async function symbolBase(world: World) {
   await writer(world.repo.folder)("src/pay.ts", PAY);
@@ -554,7 +564,7 @@ test("changing a function's definition line sends a presumed indirect conflict t
         { path: "src/checkout.ts", line: 1, role: "uses" },
         { path: "src/checkout.ts", line: 2, role: "uses" },
       ],
-      [{ path: "src/pay.ts", line: 4, role: "changed" }],
+      [{ path: "src/pay.ts", line: 4, role: "changed", ...REFUND_TEXT }],
     ],
   };
   // If owner is observed mid-write (an empty file), an alert with all definitions gone is briefly raised and fixed in the next report. Wait until it is fixed.
@@ -577,7 +587,7 @@ test("changing a function's definition line sends a presumed indirect conflict t
   await receives(
     world,
     alice.desk.folder,
-    `- Indirect conflict (estimated): my Work and owner's branch "payment". One side changed or removed a definition line of a symbol the other side uses. It's linked by name only, so it may be a different symbol. "refund" (me: Uses "src/checkout.ts":1, "src/checkout.ts":2 / them: Definition line changed "src/pay.ts":4)`,
+    `- Indirect conflict (estimated): my Work and owner's branch "payment". One side changed or removed a definition line of a symbol the other side uses. It's linked by name only, so it may be a different symbol. "refund" (me: Uses "src/checkout.ts":1, "src/checkout.ts":2 / them: Definition line changed "src/pay.ts":4 from "export function refund(amount: number)" to "export function refund(amount: number, reason: string)")`,
   );
 
   // Reverting the changed definition line resolves it.
@@ -625,6 +635,119 @@ test("changing a function's definition line sends a presumed indirect conflict t
       null,
     ),
   );
+});
+
+test("an indirect conflict says what the definition line was and became only where the share level sends content, and the text leaves the alert once it is resolved", async (t) => {
+  const world = await startWorld({ observeMs: 50, followMs: 50 });
+  t.after(world.stop);
+  await symbolBase(world);
+  await payment(world);
+  // All three change refund's definition line, which owner's copy uses. Only alice claims the file, so under declared only its content goes up.
+  const alice = await clone(world, "alice", "refund", "declared");
+  t.after(alice.desk.remove);
+  const bob = await clone(world, "bob", "fee", "intent");
+  t.after(bob.desk.remove);
+  const carol = await clone(world, "carol", "split", "declared");
+  t.after(carol.desk.remove);
+  await world.signInCli(alice.as);
+  const claimed = await world.cliIn(alice.desk.folder, "claim", "src/pay.ts", "--symbol", "refund");
+  assert.equal(claimed.code, 0, claimed.stderr);
+  for (const { desk } of [alice, bob, carol])
+    await writer(desk.folder)("src/pay.ts", REFUND_CHANGED);
+
+  const REFUND = {
+    name: "refund",
+    places: [
+      [{ path: "src/pay.ts", line: 4, role: "changed", ...REFUND_TEXT }],
+      [
+        { path: "src/checkout.ts", line: 1, role: "uses" },
+        { path: "src/checkout.ts", line: 2, role: "uses" },
+      ],
+    ],
+  };
+  /** Indirect alerts that owner is in. */
+  const withOwner = async () =>
+    (await alerts(world.owner, undefined, "indirect")).filter((a) =>
+      a.works.some((w) => w.login === "owner"),
+    );
+  await eventually(async () => {
+    const found = await withOwner();
+    assert.deepEqual(
+      found.map((a) => [a.works, a.symbols]),
+      [[[ALICE, OWNER], [REFUND]]],
+    );
+  });
+  // carol sends only the path and bob nothing, so no definition line of theirs reaches anyone, and no alert either.
+  await eventually(async () => {
+    const works = await world.works(world.owner);
+    assert.deepEqual(
+      works
+        .filter((w) => w.login !== "owner")
+        .map(({ login, share, files }) => ({
+          login,
+          share,
+          files: files.map((f) => ({ ...f, content: undefined })),
+        })),
+      [
+        {
+          login: "alice",
+          share: "declared",
+          files: [
+            {
+              path: "src/pay.ts",
+              content: undefined,
+              definitions: [
+                { name: "pay", kind: "function", line: 1 },
+                { name: "refund", kind: "function", line: 4, change: "changed", ...REFUND_TEXT },
+              ],
+            },
+          ],
+        },
+        { login: "bob", share: "intent", files: [] },
+        {
+          login: "carol",
+          share: "declared",
+          files: [{ path: "src/pay.ts", omitted: "share", content: undefined }],
+        },
+      ],
+    );
+  });
+  // Only alice's change is ever linked: bob's and carol's definition lines never left their machines.
+  for (const found of await alerts(world.owner, undefined, "indirect")) {
+    for (const { places } of found.symbols) {
+      const changer = places.findIndex((side) => side.some((p) => p.role !== "uses"));
+      assert.equal(found.works[changer]?.login, "alice");
+    }
+  }
+
+  // The pre-edit hook (here before a shell command) puts it in owner's agent context, the text quoted as data.
+  const LINE = `- Indirect conflict (estimated): my Work and alice's branch "refund". One side changed or removed a definition line of a symbol the other side uses. It's linked by name only, so it may be a different symbol. "refund" (me: Uses "src/checkout.ts":1, "src/checkout.ts":2 / them: Definition line changed "src/pay.ts":4 from "export function refund(amount: number)" to "export function refund(amount: number, reason: string)")`;
+  const seen: string[] = [];
+  await eventually(async () => {
+    const event = {
+      session_id: "definition-text",
+      cwd: world.repo.folder,
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+    };
+    const { stdout } = await world.hook(JSON.stringify(event), { cwd: world.repo.folder });
+    if (stdout) seen.push(...inboxLines(JSON.parse(stdout).hookSpecificOutput.additionalContext));
+    assert.ok(seen.includes(LINE), JSON.stringify(seen));
+  });
+
+  // Once alice reverts, the alert resolves and the server drops the definition line text from it (ADR-0054, ADR-0065).
+  await writer(alice.desk.folder)("src/pay.ts", PAY);
+  await eventually(async () => {
+    const [found] = await withOwner();
+    assert.notEqual(found?.resolved, null);
+    assert.deepEqual(found?.symbols, [
+      {
+        name: "refund",
+        places: [[{ path: "src/pay.ts", line: 4, role: "changed" }], REFUND.places[1]],
+      },
+    ]);
+  });
 });
 
 test("a new definition with the same name in two works puts a duplicate implementation in both inboxes, and a pair with both a direct and an indirect conflict has a separate alert per kind", async (t) => {

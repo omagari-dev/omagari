@@ -1787,7 +1787,7 @@ export async function startServer(options: {
     db.exec("COMMIT");
   };
   /**
-   * Drops changed-file content of works unchanged for `contentMs`, and debate patches whose work is gone or whose debate opened that long ago (ADR-0054).
+   * Drops changed-file content of works unchanged for `contentMs`, definition line text of indirect conflicts resolved or unchanged that long, and debate patches whose work is gone or whose debate opened that long ago (ADR-0054).
    * Paths, status lines and chat stay. A work whose branch is gone is deleted from `works` when its runner reports, so only patches need the gone check here.
    * ponytail: reads every old work and every seat with a patch each period. When that gets big, keep a flag for rows already dropped.
    */
@@ -1802,6 +1802,22 @@ export async function startServer(options: {
       const files: ObservedFile[] = JSON.parse(row.files);
       const dropped = JSON.stringify(files.map(dropContent));
       if (dropped !== row.files) putFiles.run(dropped, row.repo, row.login, row.branch);
+    }
+    // Definition line text in an indirect conflict is the other side's code too (ADR-0065): it goes once the alert is resolved or hasn't changed for `contentMs`.
+    const putPlaces = db.prepare("UPDATE alerts SET files = ? WHERE id = ?");
+    for (const row of db
+      .prepare(
+        `SELECT id, files FROM alerts WHERE kind = 'indirect' AND files LIKE '%"before":%'
+           AND (resolved IS NOT NULL OR updated < ?)`,
+      )
+      .all(cutoff) as { id: number; files: string }[]) {
+      const symbols = (JSON.parse(row.files) as AlertSymbol[]).map((symbol) => ({
+        ...symbol,
+        places: symbol.places.map((side) =>
+          side.map(({ before: _, after: __, ...place }) => place),
+        ),
+      }));
+      putPlaces.run(JSON.stringify(symbols), row.id);
     }
     const putStance = db.prepare("UPDATE seats SET stance = ? WHERE debate = ? AND seat = ?");
     for (const row of db

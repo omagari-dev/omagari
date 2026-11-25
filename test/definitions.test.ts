@@ -69,7 +69,15 @@ test("the definition lines of changed files ride on the observation, and new def
       {
         path: "lib/old.js",
         deleted: true,
-        definitions: [{ name: "legacy", kind: "function", line: 1, change: "removed" }],
+        definitions: [
+          {
+            name: "legacy",
+            kind: "function",
+            line: 1,
+            change: "removed",
+            before: "function legacy(a)",
+          },
+        ],
       },
       {
         path: "src/new.tsx",
@@ -81,11 +89,24 @@ test("the definition lines of changed files ride on the observation, and new def
         content: pay,
         definitions: [
           { name: "pay", kind: "function", line: 1 },
-          { name: "refund", kind: "function", line: 5, change: "changed" },
+          {
+            name: "refund",
+            kind: "function",
+            line: 5,
+            change: "changed",
+            before: "export function refund(id: string)",
+            after: "export function refund(id: string, reason: string)",
+          },
           { name: "Wallet", kind: "class", line: 9 },
           { name: "Receipt", kind: "interface", line: 12 },
           { name: "split", kind: "function", line: 16, change: "added" },
-          { name: "Wallet.open", kind: "method", line: 10, change: "removed" },
+          {
+            name: "Wallet.open",
+            kind: "method",
+            line: 10,
+            change: "removed",
+            before: "open(owner: string)",
+          },
         ],
       },
       { path: "tools/pay.py", content: "def pay(amount):\n    pass\n" },

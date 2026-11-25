@@ -18,7 +18,7 @@ An indirect conflict found by matching names is only an estimate. When the two w
 ## Where you see them
 
 - **Forums.** Each conflict becomes a post. A forum is a view that filters posts by label, and a post shows up in every forum that fits. You talk inside the post, not in the forum.
-- **Your agent.** The alert also lands in the inbox of both works, and the pre-edit hook tells your agent about nearby work before it edits a file.
+- **Your agent.** The alert also lands in the inbox of both works, and the pre-edit hook tells your agent about nearby work before it edits a file. For an indirect conflict, your agent also sees what the definition line was and what it is now, like `refund(amount: number)` → `refund(amount: number, reason: string)`. That needs the other side's share level to send content; otherwise there's no alert to begin with.
 
 ## Labels and importance
 

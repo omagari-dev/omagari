@@ -2,7 +2,7 @@
 // A definition line is the line that declares a named symbol (function, method, class, type) (GLOSSARY). The body isn't a definition line.
 import { createRequire } from "node:module";
 import { dirname, extname, join } from "node:path";
-import type { Definition } from "@omagari/contract";
+import { type Definition, MAX_DEFINITION_CHARS } from "@omagari/contract";
 import type TreeSitter from "@vscode/tree-sitter-wasm";
 
 type Node = TreeSitter.Node;
@@ -138,6 +138,12 @@ function declared(root: Node) {
 /** The file's definition lines. None if the language can't be read. */
 export const definitions = (path: string, content: string) => parse(path, content, declared);
 
+/** A definition line's text as it goes in an alert: overloads joined with ` | `, cut at the limit (ADR-0065). */
+const cut = (text: string) => {
+  const line = text.slice(1).replaceAll("\n", " | ");
+  return line.length > MAX_DEFINITION_CHARS ? `${line.slice(0, MAX_DEFINITION_CHARS - 1)}…` : line;
+};
+
 /**
  * Compares the definition lines of the base commit's version (`before`, "" if the file didn't exist) and the current version (`after`, none if the file was deleted).
  * It includes every definition that exists now. New ones are `added` and ones whose definition line changed are `changed`. A body-only change gets no mark.
@@ -158,12 +164,15 @@ export async function compare(path: string, before: string, after: string | unde
   const is = texts(now);
   const result: Definition[] = now.map(({ name, kind, line }) => {
     const before = was.get(`${kind} ${name}`);
-    const change =
-      before === undefined ? "added" : before !== is.get(`${kind} ${name}`) ? "changed" : undefined;
-    return { name, kind, line, ...(change && { change }) };
+    const after = is.get(`${kind} ${name}`) ?? "";
+    if (before === undefined) return { name, kind, line, change: "added" };
+    if (before === after) return { name, kind, line };
+    return { name, kind, line, change: "changed", before: cut(before), after: cut(after) };
   });
   for (const { name, kind, line } of old) {
-    if (!is.has(`${kind} ${name}`)) result.push({ name, kind, line, change: "removed" });
+    const key = `${kind} ${name}`;
+    if (!is.has(key))
+      result.push({ name, kind, line, change: "removed", before: cut(was.get(key) ?? "") });
   }
   return result;
 }

@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 77;
+export const CONTRACT_VERSION = 78;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -82,17 +82,24 @@ export function shareLevelsText(server: string) {
  * `too_large` went over the per-file or total limit (ADR-0007);
  * `share` is a file the share level does not send content for.
  */
+/** Max length of one definition line's text in an alert (ADR-0065). Longer ones are cut and end with `…`. */
+export const MAX_DEFINITION_CHARS = 200;
+
 /**
  * One definition line: a line that declares a named symbol (GLOSSARY). The runner extracts it from TypeScript, TSX, and JavaScript files with tree-sitter (ADR-0026).
  * A method's name is `Class.method`. `line` is the line in that work's copy (from 1); for `removed` it is the line in the base commit's version.
  * `change` is compared with the base commit's version: newly created (`added`), definition line changed (`changed`), gone (`removed`).
  * When absent, the definition line is unchanged (including body-only changes).
+ * `before` and `after` are the definition line's text in the base commit's version and now, whitespace folded (ADR-0065): both for `changed`, `before` for `removed`.
+ * They ride only where definitions do, so they follow the share level like content.
  */
 export const Definition = z.strictObject({
   name: z.string(),
   kind: z.enum(["function", "method", "class", "interface", "type", "enum"]),
   line: z.number().int().positive(),
   change: z.enum(["added", "changed", "removed"]).optional(),
+  before: z.string().max(MAX_DEFINITION_CHARS).optional(),
+  after: z.string().max(MAX_DEFINITION_CHARS).optional(),
 });
 export type Definition = z.infer<typeof Definition>;
 
@@ -436,6 +443,9 @@ export const SymbolPlace = z.strictObject({
   path: z.string(),
   line: z.number().int().positive(),
   role: z.enum(["added", "changed", "removed", "uses", "declared"]),
+  /** The definition line's text before and after the change, from `Definition` (ADR-0065). Absent when the other side's content wasn't sent. */
+  before: z.string().max(MAX_DEFINITION_CHARS).optional(),
+  after: z.string().max(MAX_DEFINITION_CHARS).optional(),
 });
 export type SymbolPlace = z.infer<typeof SymbolPlace>;
 
