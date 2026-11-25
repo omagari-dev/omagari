@@ -104,7 +104,7 @@ export {
   quote,
 } from "./inbox.ts";
 export { observationNotice } from "./observe.ts";
-export { type ErrorReports, errorReports, reportsDisabled } from "./reports.ts";
+export { buildReport, type ErrorReports, errorReports, reportsDisabled } from "./reports.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -1575,6 +1575,10 @@ export async function startRunner(options: {
       inbox = inbox?.filter((item) => !delivered.has(item.id));
       // If it's disconnected, it's sent when it reconnects.
       if (live && ids.length > 0) live.send(encode(runnerToServer, "delivered", { ids }));
+      return encode(runnerToCli, "delivered", {}, message.id);
+    }
+    if (message.kind === "report") {
+      options.reports?.put(options.serverUrl, { ...message.payload.report, piece: "hook" });
       return encode(runnerToCli, "delivered", {}, message.id);
     }
     if (message.kind === "check") {

@@ -166,7 +166,7 @@ try {
     );
   } else if (command === "runner" && sub === "stop" && rest.length === 0) {
     await stopBackground().catch(() => {
-      throw new Error("The background runner is off");
+      throw new Expected("The background runner is off");
     });
     console.log("Stopping the background runner");
   } else if (command === "runner" && sub === "ask" && rest.length > 0) {
@@ -205,7 +205,7 @@ try {
       options: { "merge-check": { type: "string" } },
       allowPositionals: true,
     });
-    if (positionals.length > 1) throw new Error(USAGE);
+    if (positionals.length > 1) throw new Expected(USAGE);
     await setup(positionals[0], values["merge-check"]);
   } else if (
     command === "uninstall" &&
@@ -220,6 +220,7 @@ try {
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
+  await reportFailure(error);
 }
 // The commands that start a runner run until they end, so they don't append the Inbox.
 if (!(command === "runner" && (sub === undefined || sub.startsWith("--") || sub === "background")))
@@ -345,7 +346,9 @@ async function remembered<T extends string>(
   const found = values.find((v) => v === value);
   if (found === undefined) {
     const from = chosen === undefined ? ` (${file})` : "";
-    throw new Error(`${name} must be one of ${values.join(", ")}: ${value}${from}`);
+    const message = `${name} must be one of ${values.join(", ")}: ${value}${from}`;
+    // A wrong flag is the member's mistake. A broken saved file isn't, so it's reported.
+    throw chosen === undefined ? new Error(message) : new Expected(message);
   }
   if (chosen !== undefined) {
     await mkdir(dirname(file), { recursive: true });
@@ -371,7 +374,7 @@ async function selfUpdate(
   );
   const updated = await update();
   if ("todo" in updated)
-    throw new Error(`${error.message}\nCould not update automatically. ${updated.todo}`);
+    throw new Expected(`${error.message}\nCould not update automatically. ${updated.todo}`);
   return finishUpdate(updated, log, then);
 }
 
@@ -441,9 +444,9 @@ async function runner(chosen: string | undefined, chosenMergeCheck: string | und
     chosenMergeCheck === "unsandboxed" &&
     !(await confirmUnsandboxed("omagari runner --merge-check unsandboxed"))
   )
-    throw new Error("Merge runs without a sandbox weren't turned on");
+    throw new Expected("Merge runs without a sandbox weren't turned on");
   if (chosenMergeCheck !== undefined && !MERGE_CHECKS.some((v) => v === chosenMergeCheck))
-    throw new Error(`Merge run must be one of ${MERGE_CHECKS.join(", ")}: ${chosenMergeCheck}`);
+    throw new Expected(`Merge run must be one of ${MERGE_CHECKS.join(", ")}: ${chosenMergeCheck}`);
   const mergeCheck = await mergeCheckFor(
     paths.mergeCheck,
     chosenMergeCheck as (typeof MERGE_CHECKS)[number] | undefined,
@@ -533,7 +536,7 @@ async function npmSelfUpdate(error: Error, log: string): Promise<never> {
 async function ask(message: string) {
   const reply = await callRunner(process.cwd(), "ask", { message }).catch((error) => {
     if (error instanceof ContractFailure)
-      throw new Error(`The runner couldn't answer: ${error.message}`);
+      throw new Expected(`The runner couldn't answer: ${error.message}`);
     throw error;
   });
   if (reply.kind !== "answer")
@@ -553,12 +556,12 @@ function seconds(ms: number) {
 async function check() {
   const folder = (
     await promisify(execFile)(onPath("git"), ["rev-parse", "--show-toplevel"]).catch(() => {
-      throw new Error("This folder is not a Git repo. Use it in a work folder");
+      throw new Expected("This folder is not a Git repo. Use it in a work folder");
     })
   ).stdout.trim();
   const reply = await callRunner(process.cwd(), "check", { folder }).catch((error) => {
     if (error instanceof ContractFailure)
-      throw new Error(`The runner couldn't answer: ${error.message}`);
+      throw new Expected(`The runner couldn't answer: ${error.message}`);
     throw error;
   });
   if (reply.kind !== "checked")
@@ -615,14 +618,14 @@ async function log() {
 /** The counterpart that calls the server with the saved session. Login happens when the runner starts. */
 async function member() {
   const session = (await readSessions())[server];
-  if (!session) throw new Error("Not logged in. Start omagari runner in the repo folder first");
+  if (!session) throw new Expected("Not logged in. Start omagari runner in the repo folder first");
   // Per-repo things (Work, status lines, Feed) are called for this folder's repo (ADR-0043). Outside a repo folder, the server picks.
   // Only remotes under the server's accounts are named (ADR-0049); a repo with none isn't Omagari's.
   const found = await readRepo(process.cwd()).catch(() => undefined);
   if (!found) return { url: server, session };
   const accepted = await acceptedRemotes({ url: server, session }, found.remotes);
   if (accepted.length === 0)
-    throw new Error("This folder's GitHub remotes aren't under an account this server accepts");
+    throw new Expected("This folder's GitHub remotes aren't under an account this server accepts");
   return { url: server, session, repos: [...new Set(accepted.map((remote) => remote.repo))] };
 }
 
@@ -630,7 +633,9 @@ async function member() {
 async function share(on: boolean) {
   const as = await member();
   if (!as.repos)
-    throw new Error("This folder is not a Git repo with a GitHub remote. Use it in a repo folder");
+    throw new Expected(
+      "This folder is not a Git repo with a GitHub remote. Use it in a repo folder",
+    );
   const { repo } = await call(as, api.share, { on });
   console.log(
     on
@@ -719,7 +724,9 @@ async function setStatus(text: string) {
   ])
     .then(({ stdout }) => stdout.trim())
     .catch(() => {
-      throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
+      throw new Expected(
+        "Not on a branch. Use it in a folder where the Work's branch is checked out",
+      );
     });
   const executor = process.env.CLAUDECODE === "1" ? ("claude-code" as const) : undefined;
   const written = await call(await member(), api.setStatus, {
@@ -747,20 +754,22 @@ async function target(path: string | undefined) {
   const git = (...args: string[]) =>
     promisify(execFile)(onPath("git"), args).then(({ stdout }) => stdout.trim());
   const branch = await git("symbolic-ref", "--quiet", "--short", "HEAD").catch(() => {
-    throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
+    throw new Expected(
+      "Not on a branch. Use it in a folder where the Work's branch is checked out",
+    );
   });
   const top = await git("rev-parse", "--show-toplevel");
   let lines: { from: number; to: number } | undefined;
   if (values.lines !== undefined) {
     const match = /^(\d+)(?:-(\d+))?$/.exec(values.lines);
-    if (!match) throw new Error(`Give a line range as <start>-<end> or <line>: ${values.lines}`);
+    if (!match) throw new Expected(`Give a line range as <start>-<end> or <line>: ${values.lines}`);
     lines = { from: Number(match[1]), to: Number(match[2] ?? match[1]) };
   }
   const relativePath =
     path === undefined
       ? undefined
       : repoPath(relative(top, resolve(path)), sep) + (/[\\/]$/.test(path) ? "/" : "");
-  if (relativePath?.startsWith("..")) throw new Error(`Path is outside the repo: ${path}`);
+  if (relativePath?.startsWith("..")) throw new Expected(`Path is outside the repo: ${path}`);
   return {
     plan: plan(values),
     branch,
@@ -773,7 +782,7 @@ async function target(path: string | undefined) {
 /** `--plan <kind>[:<symbol>]` and `--detail <line>` into a plan. If no symbol is given, it's the one from `--symbol`. */
 function plan(values: { symbol?: string; plan?: string; detail?: string }) {
   if (values.plan === undefined) {
-    if (values.detail !== undefined) throw new Error("Give --detail together with --plan");
+    if (values.detail !== undefined) throw new Expected("Give --detail together with --plan");
     return undefined;
   }
   const [kind = "", symbol = values.symbol] = values.plan.split(/:(.*)/s);
@@ -783,7 +792,7 @@ function plan(values: { symbol?: string; plan?: string; detail?: string }) {
     ...(values.detail !== undefined && { detail: values.detail }),
   });
   if (!parsed.success)
-    throw new Error(
+    throw new Expected(
       `Give a plan as --plan <${Object.keys(PLAN_KINDS).join("|")}>[:<symbol>]. If you don't write a symbol, it's the one from --symbol: ${values.plan}`,
     );
   return parsed.data;
@@ -799,7 +808,7 @@ async function claim(path: string) {
     ...(plan && { plan }),
   }).catch((error) => {
     if (error instanceof ContractFailure)
-      throw new Error(`Couldn't make the Claim: ${error.message}`);
+      throw new Expected(`Couldn't make the Claim: ${error.message}`);
     throw error;
   });
   if (reply.kind !== "claimed")
@@ -816,10 +825,10 @@ async function claim(path: string) {
 /** Releases the current branch's Work's Claims. With no path, releases all of them. */
 async function release(path: string | undefined) {
   const { plan, ...found } = await target(path);
-  if (plan) throw new Error("--plan goes only with omagari claim");
+  if (plan) throw new Expected("--plan goes only with omagari claim");
   const reply = await callRunner(process.cwd(), "release", found).catch((error) => {
     if (error instanceof ContractFailure)
-      throw new Error(`Couldn't release the Claim: ${error.message}`);
+      throw new Expected(`Couldn't release the Claim: ${error.message}`);
     throw error;
   });
   if (reply.kind !== "released")
@@ -837,7 +846,7 @@ async function impact(symbol: string) {
     branch: await currentBranch().catch(() => undefined),
   }).catch((error) => {
     if (error instanceof ContractFailure)
-      throw new Error(`The runner couldn't answer: ${error.message}`);
+      throw new Expected(`The runner couldn't answer: ${error.message}`);
     throw error;
   });
   if (reply.kind !== "impact")
@@ -904,7 +913,9 @@ async function currentBranch() {
   return promisify(execFile)(onPath("git"), ["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
     ({ stdout }) => stdout.trim(),
     () => {
-      throw new Error("Not on a branch. Use it in a folder where the Work's branch is checked out");
+      throw new Expected(
+        "Not on a branch. Use it in a folder where the Work's branch is checked out",
+      );
     },
   );
 }
@@ -920,10 +931,10 @@ async function askMember(to: string) {
     options: { executor: { type: "string" } },
   });
   const text = positionals.join(" ");
-  if (!text) throw new Error(USAGE);
+  if (!text) throw new Expected(USAGE);
   const executor = values.executor && ExecutorId.safeParse(values.executor).data;
   if (values.executor !== undefined && !executor)
-    throw new Error(`Executor must be claude-code or codex: ${values.executor}`);
+    throw new Expected(`Executor must be claude-code or codex: ${values.executor}`);
   const branch = await currentBranch();
   const reply = await callRunner(process.cwd(), "question", {
     branch,
@@ -931,7 +942,7 @@ async function askMember(to: string) {
     text,
     ...(executor && { executor }),
   }).catch((error) => {
-    if (error instanceof ContractFailure) throw new Error(`Couldn't ask: ${error.message}`);
+    if (error instanceof ContractFailure) throw new Expected(`Couldn't ask: ${error.message}`);
     throw error;
   });
   if (reply.kind !== "questioned")
@@ -963,7 +974,8 @@ async function requestDebate(post: string) {
     agenda: values.agenda ?? "",
     grounds: values.grounds ?? "",
   }).catch((error) => {
-    if (error instanceof ContractFailure) throw new Error(`Couldn't request it: ${error.message}`);
+    if (error instanceof ContractFailure)
+      throw new Expected(`Couldn't request it: ${error.message}`);
     throw error;
   });
   if (result.debate) {
@@ -991,18 +1003,18 @@ async function wait() {
   const [WAIT_SECONDS, MAX_WAIT_SECONDS] = [30, 100];
   const seconds = values.timeout === undefined ? WAIT_SECONDS : Number(values.timeout);
   if (!(seconds > 0 && seconds <= MAX_WAIT_SECONDS)) {
-    throw new Error(
+    throw new Expected(
       `Wait time is up to ${MAX_WAIT_SECONDS} seconds (default ${WAIT_SECONDS}): ${values.timeout}`,
     );
   }
   if (positionals.length + (values.path === undefined ? 0 : 1) !== 1) {
-    throw new Error(
+    throw new Expected(
       "Wait for one thing at a time: omagari wait <question number> or omagari wait --path <path>",
     );
   }
   const id = Number(positionals[0]);
   if (values.path === undefined && !Number.isInteger(id))
-    throw new Error(`Not a question number: ${positionals[0]}`);
+    throw new Expected(`Not a question number: ${positionals[0]}`);
   const branch = await currentBranch();
   const top = (
     await promisify(execFile)(onPath("git"), ["rev-parse", "--show-toplevel"])
@@ -1044,4 +1056,21 @@ async function wait() {
     }
     await sleep(Math.min(200, Math.max(0, deadline - Date.now())));
   }
+}
+
+/**
+ * A bug in a command (not a mistake in how it was used, `Expected`, or the server saying no) is reported with the command's name, never its arguments (ADR-0063).
+ * It goes to the server if signed in and reachable, else it waits in the same file the runner uses. The runner commands report their own.
+ */
+async function reportFailure(error: unknown) {
+  if (!(error instanceof Error) || error instanceof Expected || error instanceof ContractFailure)
+    return;
+  if (command === "runner" && (sub === undefined || sub.startsWith("--") || sub === "background"))
+    return;
+  // Not reaching the server isn't a bug.
+  if (error.message === "fetch failed") return;
+  reports.add(server, error, `cli / ${command}`, undefined, "cli");
+  const session = ((await readSessions().catch(() => ({}))) as Record<string, string>)[server];
+  if (!session) return;
+  await reports.deliver(server, (report) => call({ url: server, session }, api.sendReport, report));
 }

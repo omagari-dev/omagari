@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 76;
+export const CONTRACT_VERSION = 77;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -1735,6 +1735,8 @@ export const cliToRunner = {
    * once inside the sandbox (`omagari runner check`). It doesn't merge the other work. The runner doesn't call the server.
    */
   check: z.strictObject({ folder: z.string().min(1) }),
+  /** A hook's own error, already masked (ADR-0063). The runner queues it with its own and sends it to its server, unless reports are off. It answers `delivered`. */
+  report: z.strictObject({ report: ErrorReport }),
 } satisfies Payloads;
 
 /** What the runner sends to the CLI and hooks. */

@@ -23,11 +23,13 @@ import {
 } from "@omagari/contract";
 import { onPath } from "@omagari/contract/shim";
 import {
+  buildReport,
   callBackground,
   callRunner,
   claimOwner,
   claimPlace,
   inboxNotice,
+  reportsDisabled,
   runnerPaths,
 } from "@omagari/runner";
 
@@ -70,11 +72,20 @@ type HookEvent = {
   tool_input?: unknown;
 };
 
+/** The hook's own errors, handed to the runner after the answer is written (ADR-0063). Never the runner being off or slow, which the text already says. */
+const failures: { error: unknown; where: string }[] = [];
+const failed = (where: string) => (error: unknown) => {
+  failures.push({ error, where });
+  return undefined;
+};
+
 const input = await Promise.race([text(process.stdin), sleep(INPUT_MS).then(() => undefined)]);
 let event: HookEvent | undefined;
 try {
   event = input === undefined ? undefined : JSON.parse(input);
-} catch {}
+} catch (error) {
+  failed("hook / input")(error);
+}
 const cwd = typeof event?.cwd === "string" ? event.cwd : process.cwd();
 /** Session id. It becomes the name of the file that records what was shown, so only values that can't be a path are accepted. */
 const session =
@@ -86,9 +97,15 @@ const result: { name: string; context?: string; remember?: () => Promise<void> }
   executor === undefined
     ? undefined
     : event?.hook_event_name === "SessionStart"
-      ? { name: "SessionStart", ...(await sessionStart(executor).catch(() => undefined)) }
+      ? {
+          name: "SessionStart",
+          ...(await sessionStart(executor).catch(failed("hook / SessionStart"))),
+        }
       : event?.hook_event_name === "PreToolUse"
-        ? { name: "PreToolUse", ...(await preToolUse(event, executor).catch(() => undefined)) }
+        ? {
+            name: "PreToolUse",
+            ...(await preToolUse(event, executor).catch(failed("hook / PreToolUse"))),
+          }
         : undefined;
 const output = result?.context
   ? JSON.stringify({
@@ -99,8 +116,22 @@ const output = result?.context
 // Record what was shown after handing it to the agent. If it couldn't be handed over, inject it again next time (it may overlap but nothing is missed).
 process.stdout.write(output, async (error) => {
   if (!error) await result?.remember?.().catch(() => {});
+  await reportFailures();
   process.exit(0);
 });
+
+/** Hands the errors to this folder's runner and doesn't wait long. If the runner is off, or reports are off, they're dropped. */
+async function reportFailures() {
+  if (failures.length === 0 || reportsDisabled()) return;
+  await Promise.race([
+    Promise.all(
+      failures.map(({ error, where }) =>
+        callRunner(cwd, "report", { report: buildReport("hook", error, where, cwd) }),
+      ),
+    ).catch(() => {}),
+    sleep(BACKGROUND_MS),
+  ]);
+}
 
 /**
  * The runner location of a repo where an Omagari runner was welcomed on this machine. The runner creates `<git-common-dir>/omagari` once the server welcomes it.
