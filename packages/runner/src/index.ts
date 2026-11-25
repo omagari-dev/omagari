@@ -823,7 +823,17 @@ function versionAdvice(frame: unknown) {
   const refusal = VersionMismatch.safeParse(JSON.parse(String(frame)));
   if (!refusal.success) return undefined;
   const server = refusal.data.payload;
-  const versions = `The server is on ${server.version}, and this machine is on ${checkoutVersion()}.`;
+  // A version that isn't known (a clone without tags, a server without its Git) is left out, not printed as "version unknown".
+  const machine = checkoutVersion();
+  const known = (version: string) => !version.startsWith("version unknown");
+  const versions =
+    known(server.version) && known(machine)
+      ? `The server is on ${server.version}, and this machine is on ${machine}.`
+      : known(server.version)
+        ? `The server is on ${server.version}.`
+        : known(machine)
+          ? `This machine is on ${machine}.`
+          : "";
   const newer = server.contract > CONTRACT_VERSION;
   const installed = installedPackage();
   const todo = newer
@@ -832,7 +842,7 @@ function versionAdvice(frame: unknown) {
       : `Pull \`${checkoutBranch() ?? "this clone's branch"}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`
     : "The server is older. Update the server (tell whoever runs it)";
   return new ServerContractMismatch(
-    { code: "version_mismatch", message: `${versions} ${todo}` },
+    { code: "version_mismatch", message: [versions, todo].filter(Boolean).join(" ") },
     newer,
   );
 }

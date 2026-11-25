@@ -16,6 +16,7 @@ import {
   runnerToServer,
   serverToRunner,
 } from "@omagari/contract";
+import { checkoutVersion } from "@omagari/contract/version";
 import { startRunner } from "@omagari/runner";
 import { type WebSocket as ServerSocket, WebSocketServer } from "ws";
 import {
@@ -45,6 +46,15 @@ function gitVersion() {
   } catch {
     return `version unknown (commit ${git("rev-parse", "--short", "HEAD")})`;
   }
+}
+
+/** What the runner says about the two versions. A version that is unknown is left out. */
+function versionsSaid(server: string | undefined, machine: string) {
+  const machineKnown = !machine.startsWith("version unknown");
+  if (server && machineKnown)
+    return `The server is on ${server}, and this machine is on ${machine}.`;
+  if (server) return `The server is on ${server}.`;
+  return machineKnown ? `This machine is on ${machine}.` : "";
 }
 
 /** Asks Git directly for this checkout's branch. If it isn't a branch (CI's detached HEAD), the guidance is generic. */
@@ -388,10 +398,44 @@ test("when refused for a different contract version, the runner says what to upd
 
     await assert.rejects(startRunner(server.runner), {
       code: "version_mismatch",
-      message: `The server is on v0.3.0, and this machine is on ${gitVersion()}. ${todo}`,
+      message: [versionsSaid("v0.3.0", gitVersion()), todo].join(" "),
     });
     await server.closed;
   }
+});
+
+test("the runner leaves out a version that is unknown instead of saying 'version unknown'", async (t) => {
+  const server = await fakeServer(t, (socket, hello) => {
+    socket.send(
+      JSON.stringify({
+        v: CONTRACT_VERSION + 1,
+        id: "e",
+        re: hello.id,
+        kind: "error",
+        payload: {
+          code: "version_mismatch",
+          message: "contract version differs",
+          version: "version unknown",
+          contract: CONTRACT_VERSION + 1,
+        },
+      }),
+    );
+    socket.close(1008, "version_mismatch");
+  });
+
+  const todo = `Pull \`${gitBranch()}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`;
+  await assert.rejects(startRunner(server.runner), {
+    code: "version_mismatch",
+    message: [versionsSaid(undefined, gitVersion()), todo].filter(Boolean).join(" "),
+  });
+  await server.closed;
+});
+
+test("the deploy's commit is the server's version when there's no package or Git", async (t) => {
+  // The hosted server's image has neither the package nor `.git`; deploy.yml sets OMAGARI_COMMIT.
+  process.env.OMAGARI_COMMIT = "abcdef1234567";
+  t.after(() => delete process.env.OMAGARI_COMMIT);
+  assert.equal(checkoutVersion(), "commit abcdef1");
 });
 
 test("the runner closes the connection and doesn't turn on if the server refuses hello", async (t) => {

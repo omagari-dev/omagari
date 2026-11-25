@@ -46,5 +46,8 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: superfly/flyctl-actions/setup-flyctl@master
         if: env.DEPLOY == '1'
-      - run: flyctl deploy --remote-only -a "$FLY_APP" -e OMAGARI_REPO="$OMAGARI_REPO"
+      # 이미지에는 .git과 패키지가 없어서 서버가 자기 버전을 모른다. 그래서 올리는 커밋을 OMAGARI_COMMIT으로 준다(#546).
+      - run: flyctl deploy --remote-only -a "$FLY_APP" -e OMAGARI_REPO="$OMAGARI_REPO" -e OMAGARI_COMMIT="$HEAD_SHA"
         if: env.DEPLOY == '1'
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
