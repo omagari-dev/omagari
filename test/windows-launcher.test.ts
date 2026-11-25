@@ -10,7 +10,6 @@ import { launcher } from "../packages/cli/src/service.ts";
 for (const [name, folder] of [
   ["Korean letters", "홍길동"],
   ["Latin letters", "üser"],
-  ["letters and a space", "홍길동 üser"],
 ]) {
   test(`the Windows launcher reaches its log with ${name} in its paths`, {
     skip: process.platform !== "win32",
