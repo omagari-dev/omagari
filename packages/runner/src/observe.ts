@@ -106,11 +106,12 @@ export async function observe(
   return { works, problems, folders };
 
   /** The branch checked out in `tree` right now. */
-  const headOf = (tree: string) =>
-    git(tree, "symbolic-ref", "--quiet", "--short", "HEAD").then(
+  function headOf(tree: string) {
+    return git(tree, "symbolic-ref", "--quiet", "--short", "HEAD").then(
       (out) => out.trim(),
       () => undefined,
     );
+  }
 
   /** Reads the Work, and reads it again if the branch was switched while it was reading. Otherwise the files of the new branch are reported under the old one's name. */
   async function observeTree(tree: string): Promise<Work | undefined> {
