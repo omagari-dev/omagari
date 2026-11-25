@@ -30,7 +30,13 @@ import {
   serverToWeb,
   webToServer,
 } from "@omagari/contract";
-import { type Executor, type Sandbox, type SandboxInput, startRunner } from "@omagari/runner";
+import {
+  type Executor,
+  errorReports,
+  type Sandbox,
+  type SandboxInput,
+  startRunner,
+} from "@omagari/runner";
 import { type Account, type GitHub, type Pull, type RepoLabel, startServer } from "@omagari/server";
 
 const executable = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -984,6 +990,8 @@ export async function startWorld(
     checkLimits: options.checkLimits,
     quietMs: options.quietMs,
     mergeCheck: options.mergeCheck,
+    // Where the CLI keeps its queue, so a hook's error handed to this runner is sent or waits like in a real one.
+    reports: errorReports(join(data, "config", "omagari", "reports.json")),
   }).catch(async (error) => {
     await server.stop();
     await cleanup();
@@ -1252,13 +1260,15 @@ export async function startWorld(
         keepStdinOpen?: boolean;
         executor?: ExecutorId;
         cwd?: string;
+        /** Added for the hook process only (see `launchCliWith` on why never `process.env`). */
+        env?: Record<string, string>;
       } = {},
     ) =>
       run(process.execPath, [HOOK, options.executor ?? "claude-code"], {
         cwd: options.cwd ?? repo.folder,
         stdin,
         keepStdinOpen: options.keepStdinOpen,
-        env: cliEnv(),
+        env: { ...cliEnv(), ...options.env },
       }),
     async stop() {
       await runner.stop();

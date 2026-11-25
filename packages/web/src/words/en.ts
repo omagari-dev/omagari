@@ -16,6 +16,12 @@ const plural = (n: number, one: string, other: string) =>
 /** English screen text, the source dictionary (`i18n.ts`). Follow DESIGN.md "Writing". */
 export const en = {
   tryAgain: "Try again",
+  stuck: "This is taking longer than it should.",
+  crash: {
+    title: "Something went wrong",
+    body: "Reload to get back. If it keeps happening, tell the operator.",
+    reload: "Reload",
+  },
   importance: { reference: "FYI", discuss: "Discuss" } satisfies Record<Importance, string>,
 
   login: {
@@ -31,6 +37,7 @@ export const en = {
     copy: "Copy code",
     copied: "Copied the code.",
     waiting: "Waiting for you to approve on GitHub…",
+    entering: "Logging you in…",
     cancel: "Cancel",
     refusedTitle: "You can't join this workspace",
     refusedBody:

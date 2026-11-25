@@ -1745,6 +1745,8 @@ export const cliToRunner = {
    * once inside the sandbox (`omagari runner check`). It doesn't merge the other work. The runner doesn't call the server.
    */
   check: z.strictObject({ folder: z.string().min(1) }),
+  /** A hook's own error, already masked (ADR-0063). The runner queues it with its own and sends it to its server, unless reports are off. It answers `delivered`. */
+  report: z.strictObject({ report: ErrorReport }),
 } satisfies Payloads;
 
 /** What the runner sends to the CLI and hooks. */

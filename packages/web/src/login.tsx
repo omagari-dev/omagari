@@ -3,12 +3,14 @@ import { Copy, ExternalLink } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { server, signedOut } from "./api.ts";
 import { t } from "./i18n.ts";
+import { Stuck } from "./stuck.tsx";
 
 type Step =
   | { kind: "idle" }
   | { kind: "starting" }
   | { kind: "code"; userCode: string; verificationUri: string }
   | { kind: "refused"; reason: string; install?: string }
+  | { kind: "entering"; session: string }
   | { kind: "ended" }
   | { kind: "failed"; reason: string };
 
@@ -61,7 +63,11 @@ export function Login({
         if (!live()) return;
         const polled = await call(server(), api.loginPoll, { device: started.device });
         if (!live()) return;
-        if ("session" in polled) return onSession(polled.session);
+        if ("session" in polled) {
+          // GitHub returned a session; the app is loading who I am. A wait that should take seconds (ADR-0064).
+          setStep({ kind: "entering", session: polled.session });
+          return onSession(polled.session);
+        }
       }
     } catch (error) {
       if (live()) setStep(failure(error, install));
@@ -108,6 +114,16 @@ export function Login({
         <p className="hint" role="status">
           {copied ? t.login.copied : t.login.waiting}
         </p>
+      </Centered>
+    );
+  }
+
+  if (step.kind === "entering") {
+    return (
+      <Centered>
+        <h1>{t.login.title}</h1>
+        <p aria-busy="true">{t.login.entering}</p>
+        <Stuck where="sign-in / entering the app" onRetry={() => onSession(step.session)} />
       </Centered>
     );
   }

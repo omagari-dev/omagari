@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { connect as connectLocal, createServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { text } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -104,7 +104,7 @@ export {
   quote,
 } from "./inbox.ts";
 export { observationNotice } from "./observe.ts";
-export { type ErrorReports, errorReports, reportsDisabled } from "./reports.ts";
+export { buildReport, type ErrorReports, errorReports, reportsDisabled } from "./reports.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -156,8 +156,10 @@ async function converse<T>(
   args: string[],
   lines: object[],
   pick: (event: Record<string, unknown>) => T | undefined,
+  env?: NodeJS.ProcessEnv,
 ): Promise<T> {
   const child = spawnShim(command, args, {
+    env,
     stdio: ["pipe", "pipe", "ignore"],
     signal: AbortSignal.timeout(CHOICES_TIMEOUT_MS),
   });
@@ -352,6 +354,7 @@ type CodexEvent = {
 export const codex: Executor = async ({ message, resume, fork, folder, signal, model, effort }) => {
   // Ask from the work folder so the repo's `.codex/config.toml` is read too. Codex only accepts `[a-zA-Z0-9_-]` in server names.
   const listed = await execShim("codex", ["mcp", "list", "--json"], {
+    env: codexEnv(),
     cwd: folder,
     signal,
   });
@@ -377,6 +380,7 @@ export const codex: Executor = async ({ message, resume, fork, folder, signal, m
           "-",
         ];
   const run = execShim("codex", args, {
+    env: codexEnv(),
     cwd: folder,
     maxBuffer: 64 * 1024 * 1024,
     signal,
@@ -453,14 +457,66 @@ codex.choices = () =>
         efforts: efforts(listed.find((m) => m.isDefault)),
       };
     },
+    codexEnv(),
   );
 
-/** Whether Codex can run on this machine: it's installed and logged in (`codex login status` exits with 0). */
-export const codexReady = () =>
-  execShim("codex", ["login", "status"]).then(
+/** The folder of the Codex desktop app's CLI, once found there because `codex` wasn't on PATH. */
+let codexDir: string | undefined;
+
+/** The environment to start `codex` with: this one, with the app's folder in front of PATH if that's where it was found. */
+function codexEnv(): NodeJS.ProcessEnv | undefined {
+  if (!codexDir) return undefined;
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+  return { ...process.env, [key]: `${codexDir}${delimiter}${process.env[key] ?? ""}` };
+}
+
+/**
+ * Where the Codex desktop app keeps its CLI on Windows, newest package first. The app puts `codex` on PATH only inside its own shell, so a runner started anywhere else has to look.
+ * Sources: the WindowsApps package folder (`app\resources\codex.exe`, github.com/openai/codex#28278 and the #471 hand check), and the per-user copies the app also installs under `%LOCALAPPDATA%` (#25880, #28278).
+ * Not checked on a real machine: WindowsApps may not be listable by a normal user. macOS isn't covered: no source says where Codex.app keeps a CLI (#544).
+ */
+async function codexAppDirs() {
+  const dirs: string[] = [];
+  const list = (folder: string) => readdir(folder).catch(() => [] as string[]);
+  const apps = join(process.env.ProgramFiles ?? "", "WindowsApps");
+  if (process.env.ProgramFiles)
+    for (const name of (await list(apps))
+      .filter((n) => n.startsWith("OpenAI.Codex_"))
+      .sort()
+      .reverse())
+      dirs.push(join(apps, name, "app", "resources"));
+  const local = process.env.LOCALAPPDATA;
+  if (local) {
+    const bin = join(local, "OpenAI", "Codex", "bin");
+    for (const name of (await list(bin)).sort().reverse()) dirs.push(join(bin, name));
+    dirs.push(bin, join(local, "Programs", "OpenAI", "Codex", "bin"));
+  }
+  return dirs;
+}
+
+/** Whether Claude Code is installed (`claude --version` runs). */
+export const claudeReady = () =>
+  execShim("claude", ["--version"]).then(
     () => true,
     () => false,
   );
+
+/** Whether Codex can run on this machine: it's installed and logged in (`codex login status` exits with 0). It looks on PATH first, then in the Codex desktop app's folders. */
+export async function codexReady() {
+  codexDir = undefined;
+  const ready = () =>
+    execShim("codex", ["login", "status"], { env: codexEnv() }).then(
+      () => true,
+      () => false,
+    );
+  if (await ready()) return true;
+  for (const dir of await codexAppDirs()) {
+    codexDir = dir;
+    if (await ready()) return true;
+  }
+  codexDir = undefined;
+  return false;
+}
 
 /** One line of the run log: when, with which session of which executor, what it received, with which tools it ran, and why if it failed. */
 export type RunRecord = {
@@ -823,7 +879,17 @@ function versionAdvice(frame: unknown) {
   const refusal = VersionMismatch.safeParse(JSON.parse(String(frame)));
   if (!refusal.success) return undefined;
   const server = refusal.data.payload;
-  const versions = `The server is on ${server.version}, and this machine is on ${checkoutVersion()}.`;
+  // A version that isn't known (a clone without tags, a server without its Git) is left out, not printed as "version unknown".
+  const machine = checkoutVersion();
+  const known = (version: string) => !version.startsWith("version unknown");
+  const versions =
+    known(server.version) && known(machine)
+      ? `The server is on ${server.version}, and this machine is on ${machine}.`
+      : known(server.version)
+        ? `The server is on ${server.version}.`
+        : known(machine)
+          ? `This machine is on ${machine}.`
+          : "";
   const newer = server.contract > CONTRACT_VERSION;
   const installed = installedPackage();
   const todo = newer
@@ -832,7 +898,7 @@ function versionAdvice(frame: unknown) {
       : `Pull \`${checkoutBranch() ?? "this clone's branch"}\` (\`git pull\`, \`npm ci\`) and turn the runner back on`
     : "The server is older. Update the server (tell whoever runs it)";
   return new ServerContractMismatch(
-    { code: "version_mismatch", message: `${versions} ${todo}` },
+    { code: "version_mismatch", message: [versions, todo].filter(Boolean).join(" ") },
     newer,
   );
 }
@@ -847,7 +913,7 @@ export async function startRunner(options: {
   folder: string;
   /** The session from login. The GitHub token never reaches the runner. */
   session: string;
-  /** The executors to run on this machine. Each executor is one agent (ADR-0015). By default, Claude Code, plus Codex if it's installed and logged in. */
+  /** The executors to run on this machine. Each executor is one agent (ADR-0015). By default, Claude Code if it's installed, plus Codex if it's installed and logged in. */
   executors?: Partial<Record<ExecutorId, Executor>>;
   /** How long to wait for welcome. */
   welcomeTimeoutMs?: number;
@@ -895,7 +961,7 @@ export async function startRunner(options: {
     );
   const paths = await runnerPaths(folder);
   const executors = options.executors ?? {
-    "claude-code": claudeCode,
+    ...((await claudeReady()) && { "claude-code": claudeCode }),
     ...((await codexReady()) && { codex }),
   };
   const executorIds = Object.keys(executors) as ExecutorId[];
@@ -1575,6 +1641,10 @@ export async function startRunner(options: {
       inbox = inbox?.filter((item) => !delivered.has(item.id));
       // If it's disconnected, it's sent when it reconnects.
       if (live && ids.length > 0) live.send(encode(runnerToServer, "delivered", { ids }));
+      return encode(runnerToCli, "delivered", {}, message.id);
+    }
+    if (message.kind === "report") {
+      options.reports?.put(options.serverUrl, { ...message.payload.report, piece: "hook" });
       return encode(runnerToCli, "delivered", {}, message.id);
     }
     if (message.kind === "check") {

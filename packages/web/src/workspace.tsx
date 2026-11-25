@@ -110,6 +110,7 @@ import { browserAllows, type Notice, noticeFor } from "./notify.ts";
 import { ALL, placeIn, placeOf } from "./places.ts";
 import { ProfilePanel } from "./profile.tsx";
 import { type Opened, PeopleContext, ProfileCard, ProfileView } from "./profile-card.tsx";
+import { reportingFor } from "./report.ts";
 import { newestVersion, older } from "./runner-update.ts";
 import { Settings } from "./settings.tsx";
 import { setAppearance } from "./theme.ts";
@@ -264,6 +265,9 @@ export function Workspace({
   const [toAccess, setToAccess] = useState(false);
   /** My personal settings. Changes from my other tabs and devices come as `prefs` on the live connection. */
   const [prefs, setPrefs] = useState<Prefs>(me.prefs);
+  // The switch can change live; error reports follow it (ADR-0063).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the switch matters here
+  useEffect(() => reportingFor(session, prefs.reports), [prefs.reports]);
   /** Has my runner ever connected, and which repos have I shared (#354). Read again on every connect and when the member list changes. */
   const [setup, setSetup] = useState({ connected: me.connected, shared: me.shared });
   const [shareFailed, setShareFailed] = useState(false);
