@@ -105,11 +105,24 @@ export async function observe(
   }
   return { works, problems, folders };
 
-  async function observeTree(tree: string): Promise<Work | undefined> {
-    const branch = await git(tree, "symbolic-ref", "--quiet", "--short", "HEAD").then(
+  /** The branch checked out in `tree` right now. */
+  function headOf(tree: string) {
+    return git(tree, "symbolic-ref", "--quiet", "--short", "HEAD").then(
       (out) => out.trim(),
       () => undefined,
     );
+  }
+
+  /** Reads the Work, and reads it again if the branch was switched while it was reading. Otherwise the files of the new branch are reported under the old one's name. */
+  async function observeTree(tree: string): Promise<Work | undefined> {
+    for (let attempt = 0; ; attempt++) {
+      const branch = await headOf(tree);
+      const work = await readTree(tree, branch);
+      if (attempt >= 2 || (await headOf(tree)) === branch) return work;
+    }
+  }
+
+  async function readTree(tree: string, branch: string | undefined): Promise<Work | undefined> {
     if (!branch) return;
     const base = await git(tree, "merge-base", "HEAD", `refs/remotes/${remote}/HEAD`).then(
       (out) => out.trim(),
