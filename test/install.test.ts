@@ -376,7 +376,11 @@ test("omagari setup <address> logs in on a clean home, installs the hooks and ke
   const done = await bare.exited;
   assert.equal(done.code, 0, done.stderr);
   assert.match(done.stdout, /Logged in as alice/);
-  assert.match(done.stdout, /Open \/hooks in Codex and trust the two Omagari hooks/);
+  assert.match(
+    done.stdout,
+    /If you haven't yet, open \/hooks in Codex and trust the two Omagari hooks/,
+  );
+  assert.doesNotMatch(done.stdout, /One step is left/);
   assert.equal((await readSettings(world)).hooks.SessionStart?.length, 1);
 
   const status = await world.cliBare("status");

@@ -236,7 +236,10 @@ test("omagari install also installs two hooks and a one-line status skill for Co
   const installed = await world.setup();
   assert.equal(installed.code, 0, installed.stderr);
   const [, codexLine] = installed.stdout.split("\n");
-  assert.match(installed.stdout, /Open \/hooks in Codex and trust the two Omagari hooks/);
+  assert.match(
+    installed.stdout,
+    /If you haven't yet, open \/hooks in Codex and trust the two Omagari hooks/,
+  );
   assert.ok(
     codexLine?.startsWith(
       `Codex: installed the session-start and pre-edit hooks in ${hooksFile} and the status line skill in ${skillFile}`,
