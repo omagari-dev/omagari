@@ -3,7 +3,7 @@
 import * as z from "zod";
 
 /** Contract version. Sent in every envelope; a different one is rejected. Bump it on every breaking change. */
-export const CONTRACT_VERSION = 75;
+export const CONTRACT_VERSION = 76;
 
 /**
  * The server's limits (ADR-0052). Each is a setting, and unset means no limit. `requests` is per person a minute, `repos` and `storage` (megabytes)
@@ -532,6 +532,10 @@ export const Prefs = z.strictObject({
   notifyReplies: z.boolean(),
   /** Show the "Getting started" checklist and its sidebar button (#433). Skip, Hide, and "You're all set" turn it off; the profile menu's "Getting started" turns it back on. */
   guide: z.boolean(),
+  /** "Send error reports" (ADR-0063). Off: my runners, CLI, hooks and web send none (`welcome.reportsOff`, `reports`, `sendReport`'s `off`), and the server keeps none from me. */
+  reports: z.boolean(),
+  /** "Attach my name": the operator sees my login on the report rows I sent (`ReportRow.names`). Read when the operator looks, so turning it off hides it on old rows too. */
+  reportName: z.boolean(),
 });
 export type Prefs = z.infer<typeof Prefs>;
 export const DEFAULT_PREFS: Prefs = {
@@ -543,6 +547,8 @@ export const DEFAULT_PREFS: Prefs = {
   notifyDecisions: true,
   notifyReplies: true,
   guide: true,
+  reports: true,
+  reportName: false,
 };
 export const IMPORTANCE_LABELS = {
   reference: "FYI",
@@ -1434,9 +1440,11 @@ export const serverToRunner = {
     login: z.string(),
     repo: z.string(),
     shared: z.boolean(),
-    /** The operator refuses error reports (`api.refuseReports`, ADR-0063). The runner then sends none and clears the ones waiting on its machine. */
+    /** The operator refuses error reports (`api.refuseReports`, ADR-0063), or this member turned "Send error reports" off. The runner then sends none and clears the ones waiting on its machine. */
     reportsOff: z.boolean(),
   }),
+  /** `welcome.reportsOff` changed while connected: the operator's switch or this member's "Send error reports". Sent to the affected runners. */
+  reports: z.strictObject({ off: z.boolean() }),
   /** The member shared the repo or stopped sharing it (`api.share`). Sent to that member's runners in that repo. */
   sharing: z.strictObject({ shared: z.boolean() }),
   /**
@@ -1877,12 +1885,18 @@ export const OperatorOverview = z.strictObject({
 });
 export type OperatorOverview = z.output<typeof OperatorOverview>;
 
-/** A report as the operator sees it: one row per grouping key (`reportKey`), never the sender's login (ADR-0063). */
-export const ReportRow = ErrorReport.extend({
+/** A report row as its sender sees it in "Error reports I sent": `count` is only how many times I sent it. */
+export const MyReport = ErrorReport.extend({
   id: z.number().int(),
   /** When it first and last happened (ISO). The row goes 30 days after `last`. */
   first: z.string(),
   last: z.string(),
+});
+export type MyReport = z.output<typeof MyReport>;
+/** A report as the operator sees it: one row per grouping key (`reportKey`). */
+export const ReportRow = MyReport.extend({
+  /** Senders of this row who turned on "Attach my name" (`Prefs.reportName`). Everyone else stays anonymous (ADR-0063). */
+  names: z.array(z.string()),
 });
 export type ReportRow = z.output<typeof ReportRow>;
 
@@ -2157,8 +2171,8 @@ export const api = {
   },
   /**
    * A piece sends an error or stuck report (ADR-0063, ADR-0064). The server masks it again, adds it to the row with the same `reportKey`,
-   * or starts a row if the sender started fewer than 20 in the last hour (past that it's dropped without an error). `off` is true when the operator refuses reports:
-   * nothing was kept, and the piece stops sending.
+   * or starts a row if the sender started fewer than 20 in the last hour (past that it's dropped without an error). `off` is true when the operator refuses reports
+   * or the sender turned "Send error reports" off (`Prefs.reports`): nothing was kept, and the piece stops sending.
    */
   sendReport: {
     method: "POST",
@@ -2166,7 +2180,7 @@ export const api = {
     body: ErrorReport,
     response: z.strictObject({ off: z.boolean() }),
   },
-  /** Every report row, last seen first, and whether the server refuses reports. Never the sender's login. `forbidden` for anyone who isn't an operator. */
+  /** Every report row, last seen first, and whether the server refuses reports. A sender's login only if they attached their name. `forbidden` for anyone who isn't an operator. */
   errorReports: {
     method: "GET",
     path: "/api/reports/all",
@@ -2178,6 +2192,22 @@ export const api = {
     path: "/api/reports/resolve",
     body: z.strictObject({ id: z.number().int() }),
     response: z.strictObject({ reports: z.array(ReportRow), off: z.boolean() }),
+  },
+  /** "Error reports I sent": the rows I sent, last seen first. Other members never see them. */
+  myReports: {
+    method: "GET",
+    path: "/api/reports/mine",
+    response: z.strictObject({ reports: z.array(MyReport) }),
+  },
+  /**
+   * Deletes my part of a row: my login goes and the row's count drops by what I sent. A row nobody else sent (count 0) is deleted.
+   * `not_found` if I didn't send it. The answer is my rows after it.
+   */
+  deleteMyReport: {
+    method: "POST",
+    path: "/api/reports/mine/delete",
+    body: z.strictObject({ id: z.number().int() }),
+    response: z.strictObject({ reports: z.array(MyReport) }),
   },
   /** An operator refuses reports for the whole server (`off`), or takes them again. While refused, the server keeps nothing, not even its own errors. */
   refuseReports: {

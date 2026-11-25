@@ -273,7 +273,7 @@ async function setup(address: string | undefined, mergeCheck: string | undefined
   console.log(
     reportsDisabled()
       ? "Error reports are off on this machine (OMAGARI_NO_ERROR_REPORTS or DO_NOT_TRACK)."
-      : `Errors from Omagari on this machine go to ${server}, masked, so whoever runs it can fix them. To turn them off, set OMAGARI_NO_ERROR_REPORTS=1 or DO_NOT_TRACK=1.`,
+      : `Errors from Omagari on this machine go to ${server}, masked, so whoever runs it can fix them. To turn them off, use Settings → Error reports on the web, or set OMAGARI_NO_ERROR_REPORTS=1 or DO_NOT_TRACK=1.`,
   );
   console.log(
     `\nServer: ${server}\nOne step is left: Open /hooks in Codex and trust the two Omagari hooks (Codex has no way to trust them in advance).`,

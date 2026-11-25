@@ -1178,6 +1178,30 @@ if (process.env.DEMO_UPDATE) {
     stack: [],
     count: 3,
   });
+  // #526: Yuna attached her name, so the operator sees "Sent by yuna" on her rows. I sent the same stuck sign-in once and a runner error of my own,
+  // so Settings → Error reports lists two under "Error reports I sent".
+  await call(yuna, api.setPrefs, { reportName: true });
+  await call(world.owner, api.sendReport, {
+    ...runner,
+    piece: "web",
+    kind: "stuck",
+    os: "macOS",
+    runtime: "Safari 19",
+    where: "sign-in / waiting for GitHub",
+    name: "Stuck",
+    message: "Waited 60 seconds",
+    stack: [],
+    count: 1,
+  });
+  await call(world.owner, api.sendReport, {
+    ...runner,
+    os: "darwin",
+    arch: "arm64",
+    where: "background runner / start",
+    message: "Share level must be one of off, status, everything: all (<repo>/.git/omagari/share)",
+    stack: ["at readShare (/Users/me/omagari/packages/runner/src/share.ts:41:11)"],
+    count: 2,
+  });
 }
 
 seeded = true;

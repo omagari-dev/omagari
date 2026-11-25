@@ -42,7 +42,7 @@ import { ImportanceBadge, LabelDot, useLabels } from "./labels.tsx";
 import { Mark } from "./members.tsx";
 import { browserSwitch, setBrowserSwitch } from "./notify.ts";
 import { OverviewPage } from "./overview.tsx";
-import { ErrorReportsPage } from "./reports.tsx";
+import { ErrorReportsPage, MyReportsList } from "./reports.tsx";
 import { appearance, setAppearance, systemLook, useLook } from "./theme.ts";
 import { Avatar, personName } from "./workspace.tsx";
 
@@ -53,6 +53,7 @@ type Page =
   | "appearance"
   | "notifications"
   | "account"
+  | "sending"
   | "alerts"
   | "labels"
   | "info"
@@ -191,6 +192,7 @@ export function Settings({
       <Bell key="notifications" size={18} aria-hidden />,
     ],
     ["account", t.settings.pages.account, <UserRound key="account" size={18} aria-hidden />],
+    ["sending", t.settings.pages.reports, <Bug key="sending" size={18} aria-hidden />],
     ["alerts", t.settings.pages.alerts, <GitMerge key="alerts" size={18} aria-hidden />],
     ["labels", t.settings.pages.labels, <Tag key="labels" size={18} aria-hidden />],
     ["info", t.settings.pages.info, <Info key="info" size={18} aria-hidden />],
@@ -255,6 +257,33 @@ export function Settings({
           })
         }
       />
+    );
+  } else if (page === "sending") {
+    // My switches come with `api.me` (prefs); the list reads its own.
+    const words = t.settings.myReports;
+    const change = (next: Partial<Prefs>) =>
+      onPrefs(next).catch((error) => {
+        check(error);
+        setSaveError(t.settings.saveFailed);
+      });
+    body = (
+      <>
+        <Group note={words.note}>
+          <SwitchRow
+            name={words.send}
+            description={prefs.reports ? words.sendOn : words.sendOff}
+            on={prefs.reports}
+            onChange={(on) => change({ reports: on })}
+          />
+          <SwitchRow
+            name={words.name}
+            description={prefs.reportName ? words.nameOn : words.nameOff}
+            on={prefs.reportName}
+            onChange={(on) => change({ reportName: on })}
+          />
+        </Group>
+        <MyReportsList session={session} check={check} />
+      </>
     );
   } else if (page === "account") {
     // Needs nothing from the settings read.
@@ -328,13 +357,13 @@ export function Settings({
           </span>
         </div>
         <h3>{t.settings.me}</h3>
-        {items.slice(0, 5).map(item)}
+        {items.slice(0, 6).map(item)}
         <h3>{t.settings.workspace(workspace ?? "")}</h3>
-        {items.slice(5, 8).map(item)}
+        {items.slice(6, 9).map(item)}
         {me.operator && (
           <>
             <h3>{t.settings.server}</h3>
-            {items.slice(8).map(item)}
+            {items.slice(9).map(item)}
           </>
         )}
       </nav>

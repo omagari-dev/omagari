@@ -65,6 +65,7 @@ import {
   type MemberView,
   type MergeCheckState,
   type Message,
+  type MyReport,
   maskReport,
   type ObservedFile,
   type PendingAccess,
@@ -1127,6 +1128,18 @@ export async function startServer(options: {
     first INTEGER NOT NULL,
     last INTEGER NOT NULL
   ) STRICT`);
+  // Who sent each row and how many times (#526), so a member can see and delete their own part. Rows from before it get their starter.
+  const hadSenders = db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'report_senders'").get();
+  db.exec(`CREATE TABLE IF NOT EXISTS report_senders (
+    id INTEGER NOT NULL REFERENCES reports (id) ON DELETE CASCADE,
+    login TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (id, login)
+  ) STRICT`);
+  if (!hadSenders)
+    db.exec(
+      "INSERT INTO report_senders (id, login, count) SELECT id, login, count FROM reports WHERE login IS NOT NULL",
+    );
   /** The operator refuses error reports for the whole server (ADR-0063). */
   const reportsOff = () => !!db.prepare("SELECT 1 FROM settings WHERE key = 'reports off'").get();
   /**
@@ -1134,41 +1147,81 @@ export async function startServer(options: {
    * Nothing is kept while reports are refused.
    */
   const keepReport = (sent: ErrorReport, login: string | null) => {
-    if (reportsOff()) return;
+    if (reportsOff() || (login && !prefsOf(login).reports)) return;
     const report = maskReport(sent);
     const key = reportKey(report);
     const now = Date.now();
-    const known = db
-      .prepare("UPDATE reports SET count = count + ?, last = ?, report = ? WHERE key = ?")
-      .run(report.count, now, JSON.stringify({ ...report, count: 1 }), key).changes;
-    if (known) return;
-    const started = db
-      .prepare("SELECT COUNT(*) AS n FROM reports WHERE login IS ? AND first > ?")
-      .get(login, now - (options.hourMs ?? 3_600_000)) as { n: number };
-    if (started.n >= REPORTS_PER_HOUR) return;
-    db.prepare(
-      "INSERT INTO reports (key, login, report, count, first, last) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run(key, login, JSON.stringify({ ...report, count: 1 }), report.count, now, now);
+    const json = JSON.stringify({ ...report, count: 1 });
+    let row = db
+      .prepare(
+        "UPDATE reports SET count = count + ?, last = ?, report = ? WHERE key = ? RETURNING id",
+      )
+      .get(report.count, now, json, key) as { id: number } | undefined;
+    if (!row) {
+      const started = db
+        .prepare("SELECT COUNT(*) AS n FROM reports WHERE login IS ? AND first > ?")
+        .get(login, now - (options.hourMs ?? 3_600_000)) as { n: number };
+      if (started.n >= REPORTS_PER_HOUR) return;
+      row = db
+        .prepare(
+          "INSERT INTO reports (key, login, report, count, first, last) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+        )
+        .get(key, login, json, report.count, now, now) as { id: number };
+    }
+    if (login)
+      db.prepare(
+        "INSERT INTO report_senders (id, login, count) VALUES (?, ?, ?) ON CONFLICT (id, login) DO UPDATE SET count = count + excluded.count",
+      ).run(row.id, login, report.count);
   };
-  /** Every row, last seen first, as the operator sees it: no login. */
-  const reportRows = (): ReportRow[] =>
-    (
+  type StoredReport = { id: number; report: string; count: number; first: number; last: number };
+  const toRow = (row: StoredReport): MyReport => ({
+    ...(JSON.parse(row.report) as ErrorReport),
+    id: row.id,
+    count: row.count,
+    first: new Date(row.first).toISOString(),
+    last: new Date(row.last).toISOString(),
+  });
+  /** Every row, last seen first, as the operator sees it: a sender's login only if they turned on "Attach my name". */
+  const reportRows = (): ReportRow[] => {
+    const senders = db.prepare("SELECT id, login FROM report_senders ORDER BY login").all() as {
+      id: number;
+      login: string;
+    }[];
+    return (
       db
         .prepare("SELECT id, report, count, first, last FROM reports ORDER BY last DESC, id DESC")
-        .all() as {
-        id: number;
-        report: string;
-        count: number;
-        first: number;
-        last: number;
-      }[]
+        .all() as StoredReport[]
     ).map((row) => ({
-      ...(JSON.parse(row.report) as ErrorReport),
-      id: row.id,
-      count: row.count,
-      first: new Date(row.first).toISOString(),
-      last: new Date(row.last).toISOString(),
+      ...toRow(row),
+      names: senders
+        .filter((sender) => sender.id === row.id && prefsOf(sender.login).reportName)
+        .map((sender) => sender.login),
     }));
+  };
+  /** The rows `login` sent, with only their own count. */
+  const myReports = (login: string): MyReport[] =>
+    (
+      db
+        .prepare(
+          "SELECT r.id, r.report, s.count, r.first, r.last FROM reports r JOIN report_senders s ON s.id = r.id WHERE s.login = ? ORDER BY r.last DESC, r.id DESC",
+        )
+        .all(login) as StoredReport[]
+    ).map(toRow);
+  /**
+   * Takes `login`'s part out of row `id`: their sender entry goes, the count drops by what they sent, and the row's starter login is cleared if it was them.
+   * A row nobody else sent is left with count 0 and deleted. Returns false if they didn't send it.
+   */
+  const dropMyReport = (login: string, id: number) => {
+    const mine = db
+      .prepare("DELETE FROM report_senders WHERE id = ? AND login = ? RETURNING count")
+      .get(id, login) as { count: number } | undefined;
+    if (!mine) return false;
+    db.prepare(
+      "UPDATE reports SET count = count - ?, login = CASE WHEN login = ? THEN NULL ELSE login END WHERE id = ?",
+    ).run(mine.count, login, id);
+    db.prepare("DELETE FROM reports WHERE id = ? AND count <= 0").run(id);
+    return true;
+  };
 
   // Q&As. The asker (`login`) is that agent's owner. If private, only that person sees it; if public, one line stands in messages and everyone sees it.
   // `answer` is the contract's Qa.answer (JSON) and is NULL while waiting for an answer. `settled` is when the answer or failure was written (ms).
@@ -3895,6 +3948,8 @@ export async function startServer(options: {
       db.prepare("DELETE FROM questions WHERE target = ?").run(login);
       db.prepare("DELETE FROM access_requests WHERE login = ? AND state != 'approved'").run(login);
       db.prepare("DELETE FROM feed WHERE json_extract(claim, '$.login') = ?").run(login);
+      // Their part of each error report goes; rows others sent too stay (#526).
+      for (const { id } of myReports(login)) dropMyReport(login, id);
       for (const table of tablesWith("login")) {
         if (KEPT_AFTER_DELETE.includes(table))
           db.prepare(`UPDATE OR IGNORE ${table} SET login = ? WHERE login = ?`).run(stand, login);
@@ -4084,9 +4139,30 @@ export async function startServer(options: {
   });
 
   mount(app, api.sendReport, (report, c) => {
-    keepReport(report, c.get("login") as string);
-    return { off: reportsOff() };
+    const login = c.get("login") as string;
+    keepReport(report, login);
+    return { off: reportsOff() || !prefsOf(login).reports };
   });
+
+  mount(app, api.myReports, (_, c) => ({ reports: myReports(c.get("login") as string) }));
+
+  mount(app, api.deleteMyReport, ({ id }, c) => {
+    const login = c.get("login") as string;
+    if (!dropMyReport(login, id))
+      throw new ContractFailure({ code: "not_found", message: `No such report of yours: ${id}` });
+    return { reports: myReports(login) };
+  });
+
+  /** Tells connected runners (all, or one member's) whether to send reports, after a switch changed. */
+  const tellReports = (login?: string) => {
+    for (const [socket, runner] of runners)
+      if ((!login || runner.login === login) && open(socket, runner))
+        socket.send(
+          encode(serverToRunner, "reports", {
+            off: reportsOff() || !prefsOf(runner.login).reports,
+          }),
+        );
+  };
 
   mount(app, api.errorReports, (_, c) => {
     mustOperate(c.get("login") as string);
@@ -4104,6 +4180,7 @@ export async function startServer(options: {
     if (off)
       db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('reports off', '1')").run();
     else db.prepare("DELETE FROM settings WHERE key = 'reports off'").run();
+    tellReports();
     return { off };
   });
 
@@ -4204,12 +4281,14 @@ export async function startServer(options: {
 
   mount(app, api.setPrefs, (next, c) => {
     const login = c.get("login") as string;
-    const prefs = { ...prefsOf(login), ...next };
+    const before = prefsOf(login);
+    const prefs = { ...before, ...next };
     db.prepare("INSERT OR REPLACE INTO prefs (login, prefs) VALUES (?, ?)").run(
       login,
       JSON.stringify(prefs),
     );
     sendTo(login, encode(serverToWeb, "prefs", prefs));
+    if (before.reports !== prefs.reports) tellReports(login);
     return prefs;
   });
 
@@ -5796,7 +5875,12 @@ export async function startServer(options: {
             encode(
               serverToRunner,
               "welcome",
-              { login, repo, shared: isShared, reportsOff: reportsOff() },
+              {
+                login,
+                repo,
+                shared: isShared,
+                reportsOff: reportsOff() || !prefsOf(login).reports,
+              },
               message.id,
             ),
           );

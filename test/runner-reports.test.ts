@@ -141,3 +141,55 @@ test("while the server refuses reports, the runner sends none and drops the ones
     ),
   );
 });
+
+test('with the member\'s "Send error reports" off, the runner sends none and drops the ones waiting', async (t) => {
+  const { world, queue } = await twoFolders(t);
+  await call(world.owner, api.setPrefs, { reports: false });
+  await writeFile(
+    queue,
+    JSON.stringify([
+      {
+        server: world.server.url,
+        report: {
+          piece: "runner",
+          kind: "error",
+          version: "0.4.1",
+          os: "linux",
+          arch: "x64",
+          runtime: "Node 24.3.0",
+          where: "runner / observation",
+          name: "Error",
+          message: "waited from before",
+          stack: [],
+          count: 1,
+        },
+      },
+    ]),
+  );
+  const running = background(world, t);
+  await running.output(/Couldn't start the runner for .+: Share level must be one of/);
+  await online(world);
+  await eventually(async () => assert.deepEqual(await queued(queue), [], "Still waiting"));
+  assert.deepEqual((await call(world.owner, api.errorReports)).reports, []);
+});
+
+test('turning "Send error reports" off while the runner is connected stops its reports', async (t) => {
+  const { world, broken, queue } = await twoFolders(t);
+  const running = background(world, t, { OMAGARI_BACKGROUND_RETRY_MS: "200" });
+  await running.output(
+    /Couldn't start the runner for .+: Share level must be one of .+: everything/,
+  );
+  await eventually(async () =>
+    assert.equal((await call(world.owner, api.errorReports)).reports.length, 1),
+  );
+
+  await call(world.owner, api.setPrefs, { reports: false });
+  // The runner heard it live: with the server down, a new failure isn't even queued. A runner that hadn't heard would keep it for later.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await world.stopServer();
+  const { share } = await runnerPaths(broken);
+  await writeFile(share, "nothing\n");
+  await running.output(/Couldn't start the runner for .+: Share level must be one of .+: nothing/);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.deepEqual(await queued(queue), []);
+});

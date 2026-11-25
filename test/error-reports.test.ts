@@ -144,3 +144,89 @@ test("while the operator refuses reports, nothing is kept and senders hear they'
     ["taken"],
   );
 });
+
+test("a member's own reports: only they see them, with their own count; the operator sees a login only if it's attached; delete takes out only their part", async (t) => {
+  const world = await startWorld({ operators: ["Owner"] });
+  t.after(world.stop);
+  world.github.grant("carol", REPO);
+  world.github.grant("erin", REPO);
+  const carol = await world.login("carol");
+  const erin = await world.login("erin");
+
+  // The same error from both, carol twice; and one only carol sent.
+  await call(carol, api.sendReport, { ...report("shared"), count: 2 });
+  await call(erin, api.sendReport, report("shared"));
+  await call(carol, api.sendReport, report("carol only"));
+  const mine = await call(carol, api.myReports);
+  assert.deepEqual(
+    mine.reports.map((r) => [r.message, r.count]),
+    [
+      ["carol only", 1],
+      ["shared", 2],
+    ],
+  );
+  assert.deepEqual(
+    (await call(erin, api.myReports)).reports.map((r) => [r.message, r.count]),
+    [["shared", 1]],
+  );
+
+  // Anonymous by default; erin attaches her name, and it shows only on the rows she sent.
+  const names = async () =>
+    Object.fromEntries(
+      (await call(world.owner, api.errorReports)).reports.map((r) => [r.message, r.names]),
+    );
+  assert.deepEqual(await names(), { shared: [], "carol only": [] });
+  assert.equal((await call(erin, api.setPrefs, { reportName: true })).reportName, true);
+  assert.deepEqual(await names(), { shared: ["erin"], "carol only": [] });
+
+  // erin can't delete what only carol sent.
+  const only = mine.reports.find((r) => r.message === "carol only")?.id ?? 0;
+  const shared = mine.reports.find((r) => r.message === "shared")?.id ?? 0;
+  await assert.rejects(call(erin, api.deleteMyReport, { id: only }), refused("not_found"));
+
+  // carol deletes her part of the shared row: it stays with erin's count, and carol's login is gone from it.
+  assert.deepEqual(
+    (await call(carol, api.deleteMyReport, { id: shared })).reports.map((r) => r.message),
+    ["carol only"],
+  );
+  let rows = (await call(world.owner, api.errorReports)).reports;
+  assert.equal(rows.find((r) => r.id === shared)?.count, 1);
+  // Deleting a row only carol sent removes it.
+  await call(carol, api.deleteMyReport, { id: only });
+  rows = (await call(world.owner, api.errorReports)).reports;
+  assert.deepEqual(
+    rows.map((r) => r.message),
+    ["shared"],
+  );
+  // When the last sender deletes theirs, the row goes.
+  assert.deepEqual(await call(erin, api.deleteMyReport, { id: shared }), { reports: [] });
+  assert.deepEqual((await call(world.owner, api.errorReports)).reports, []);
+});
+
+test('with "Send error reports" off, the server keeps nothing from that member and says off', async (t) => {
+  const world = await startWorld({ operators: ["Owner"] });
+  t.after(world.stop);
+  const carol = await world.login("carol");
+  assert.equal((await call(carol, api.me)).prefs.reports, true);
+  await call(carol, api.setPrefs, { reports: false });
+  assert.deepEqual(await call(carol, api.sendReport, report("not sent")), { off: true });
+  assert.deepEqual(await call(carol, api.myReports), { reports: [] });
+  assert.deepEqual((await call(world.owner, api.errorReports)).reports, []);
+  // Others still send.
+  assert.deepEqual(await call(world.owner, api.sendReport, report("owner's")), { off: false });
+});
+
+test("deleting an account takes its part out of every report row", async (t) => {
+  const world = await startWorld({ operators: ["Owner"] });
+  t.after(world.stop);
+  const carol = await world.login("carol");
+  await call(carol, api.sendReport, report("shared"));
+  await call(world.owner, api.sendReport, report("shared"));
+  await call(carol, api.sendReport, report("carol only"));
+  await call(carol, api.deleteAccount);
+  const { reports } = await call(world.owner, api.errorReports);
+  assert.deepEqual(
+    reports.map((r) => [r.message, r.count]),
+    [["shared", 1]],
+  );
+});
