@@ -205,6 +205,16 @@ export async function background(
   console.log(`Background runner on: ${socket}`);
   await watchAll();
   const retry = setInterval(() => watchAll().catch(() => {}), RETRY_MS);
+  // Only test runners set this (test/harness.ts). The one `omagari setup` registers never does, so it outlives the terminal.
+  const testParent = Number(process.env.OMAGARI_TEST_PARENT_PID);
+  if (testParent)
+    setInterval(() => {
+      try {
+        process.kill(testParent, 0);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") process.exit(0); // the test run that started us is gone
+      }
+    }, 1000).unref();
 
   await Promise.race([
     ...["SIGINT", "SIGTERM"].map((signal) => once(process, signal)),

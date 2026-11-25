@@ -124,7 +124,8 @@ function run(
 function launch(file: string, args: string[], options: { cwd: string; env?: object }) {
   const child = spawn(file, args, {
     cwd: options.cwd,
-    env: { ...process.env, ...options.env },
+    // The background runner exits when this test process is gone, even if it was killed with SIGKILL (see background.ts).
+    env: { ...process.env, OMAGARI_TEST_PARENT_PID: String(process.pid), ...options.env },
   });
   let stdout = "";
   let stderr = "";
