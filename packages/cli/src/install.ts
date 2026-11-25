@@ -43,10 +43,10 @@ async function claudeCode() {
   const home = claudeHome();
   const settings = join(home, "settings.json");
   // SessionStart has no matcher. It must also run when a session is cleared or compacted, so the pre-edit hook's memory gets reset.
-  // PreToolUse matches file-editing tools, plus shell commands (Bash) to deliver the inbox. The hook filters on its own too, but this keeps other tools from starting it.
+  // PreToolUse matches file-editing and reading tools (Read also gets Nearby work; Grep and Glob only the inbox), plus shell commands (Bash) to deliver the inbox. The hook filters on its own too, but this keeps other tools from starting it.
   await mergeHooks(settings, "claude-code", {
     SessionStart: {},
-    PreToolUse: { matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash" },
+    PreToolUse: { matcher: "Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash" },
   });
   const skill = join(home, "skills", "omagari-status", "SKILL.md");
   await mkdir(dirname(skill), { recursive: true });
