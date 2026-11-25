@@ -41,33 +41,39 @@ test("with neither Claude Code nor Codex installed, the runner reports no agent"
   assert.deepEqual(await agentsOf(world, "alice"), []);
 });
 
-test("a runner finds Codex in the desktop app's folder when it isn't on PATH, and reports Codex alone without Claude Code", async (t) => {
-  const { world, desk } = await setup(t);
-  // The app's folder, in the shape of the Windows package: <ProgramFiles>\WindowsApps\OpenAI.Codex_<version>_x64__<id>\app\resources
-  const root = await realpath(await mkdtemp(join(tmpdir(), "omagari-codex-app-")));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const resources = join(root, "WindowsApps", "OpenAI.Codex_1.0.0.0_x64__abc", "app", "resources");
-  await mkdir(resources, { recursive: true });
-  const script = join(import.meta.dirname, "fake-codex.ts");
-  await writeFile(
-    join(resources, process.platform === "win32" ? "codex.cmd" : "codex"),
-    process.platform === "win32"
-      ? `@"${process.execPath}" "${script}" %*\r\n`
-      : `#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`,
-    { mode: 0o755 },
-  );
-  await writer(world.codex)("auth.json", "{}");
+// The app's folders, as #544's sources give them. Windows sets ProgramFiles again for every 64-bit process, so a test can't point it elsewhere there:
+// the WindowsApps package is checked off Windows only, and the per-user copy under LOCALAPPDATA everywhere.
+const layouts = [
+  {
+    name: "the WindowsApps package",
+    env: "ProgramFiles",
+    folder: ["WindowsApps", "OpenAI.Codex_1.0.0.0_x64__abc", "app", "resources"],
+    skip: process.platform === "win32",
+  },
+  { name: "the per-user copy", env: "LOCALAPPDATA", folder: ["OpenAI", "Codex", "bin", "abc123"] },
+];
 
-  const out = world.launchCliWith(
-    { PATH: bare(), ProgramFiles: root, OMAGARI_PROBE_544: "1" },
-    desk.folder,
-    "runner",
-  );
-  t.after(() => out.stop("SIGKILL"));
-  console.error(
-    "PROBE dirs",
-    JSON.stringify(await (await import("node:fs/promises")).readdir(resources)),
-  );
-  await out.output(/Agents: Codex\n/);
-  await eventually(async () => assert.deepEqual(await agentsOf(world, "alice"), ["codex"]));
-});
+for (const layout of layouts)
+  test(`a runner finds Codex in the desktop app's folder (${layout.name}) when it isn't on PATH, and reports Codex alone without Claude Code`, {
+    skip: layout.skip,
+  }, async (t) => {
+    const { world, desk } = await setup(t);
+    const root = await realpath(await mkdtemp(join(tmpdir(), "omagari-codex-app-")));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const folder = join(root, ...layout.folder);
+    await mkdir(folder, { recursive: true });
+    const script = join(import.meta.dirname, "fake-codex.ts");
+    await writeFile(
+      join(folder, process.platform === "win32" ? "codex.cmd" : "codex"),
+      process.platform === "win32"
+        ? `@"${process.execPath}" "${script}" %*\r\n`
+        : `#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`,
+      { mode: 0o755 },
+    );
+    await writer(world.codex)("auth.json", "{}");
+
+    const out = world.launchCliWith({ PATH: bare(), [layout.env]: root }, desk.folder, "runner");
+    t.after(() => out.stop("SIGKILL"));
+    await out.output(/Agents: Codex\n/);
+    await eventually(async () => assert.deepEqual(await agentsOf(world, "alice"), ["codex"]));
+  });
