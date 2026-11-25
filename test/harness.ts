@@ -105,7 +105,7 @@ function run(
     const child = execFile(
       file,
       args,
-      { cwd: options.cwd, env: { ...process.env, ...options.env } },
+      { cwd: options.cwd, env: childEnv(options.env) },
       (error, stdout, stderr) => {
         if (child.exitCode === null)
           reject(error); // it didn't start, or it was killed by a signal
@@ -120,11 +120,26 @@ function run(
   });
 }
 
+/**
+ * This process's environment with `extra` put over it, for a child only (never reassign `process.env`).
+ * On Windows names are case-insensitive but a plain spread keeps both `Path` and `PATH` (or `ProgramFiles` and `PROGRAMFILES`), and the child sees whichever it meets first. So a name already there is replaced, not added next to.
+ */
+function childEnv(extra: object = {}) {
+  const env: Record<string, unknown> = { ...process.env };
+  for (const [name, value] of Object.entries(extra)) {
+    if (process.platform === "win32")
+      for (const key of Object.keys(env))
+        if (key.toUpperCase() === name.toUpperCase()) delete env[key];
+    env[name] = value;
+  }
+  return env as NodeJS.ProcessEnv;
+}
+
 /** Starts an executable that doesn't end (like the runner). Waits for output, and ends it by sending a signal. */
 function launch(file: string, args: string[], options: { cwd: string; env?: object }) {
   const child = spawn(file, args, {
     cwd: options.cwd,
-    env: { ...process.env, ...options.env },
+    env: childEnv(options.env),
   });
   let stdout = "";
   let stderr = "";
