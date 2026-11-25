@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ReportRow } from "@omagari/contract";
+import type { MyReport } from "@omagari/contract";
 import { issueUrl } from "./issue-url.ts";
 
-const row: ReportRow = {
+const row: MyReport = {
   id: 1,
   piece: "runner",
   kind: "error",

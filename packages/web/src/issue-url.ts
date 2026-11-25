@@ -1,4 +1,4 @@
-import type { ReportRow } from "@omagari/contract";
+import type { MyReport } from "@omagari/contract";
 
 /** GitHub cuts longer new-issue URLs, so stack lines drop from the end until it fits. */
 const MAX_URL = 8000;
@@ -7,7 +7,7 @@ const MAX_URL = 8000;
  * "Open as GitHub issue" (ADR-0063): a new-issue page on the server's source repo (`settings.sourceUrl`, so a fork opens on its fork), filled from the masked report.
  * The report never has the sender's login, so the issue can't either. Undefined when the source isn't a GitHub repo.
  */
-export function issueUrl(source: string, report: ReportRow): string | undefined {
+export function issueUrl(source: string, report: MyReport): string | undefined {
   const repo = source.replace(/\/+$/, "").replace(/\.git$/, "");
   if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(repo)) return undefined;
   const title = `${report.piece}: ${report.name}: ${report.message}`.slice(0, 120);

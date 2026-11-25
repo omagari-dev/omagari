@@ -1004,6 +1004,12 @@ export async function startRunner(options: {
     socket = current;
     const welcomed = Promise.withResolvers<{ login: string; repo: string; reportsOff: boolean }>();
     let refusal: Error | undefined;
+    /** Starts or stops sending reports on this connection (`welcome.reportsOff`, `reports`). Returns what stops it. */
+    const reporting = (off: boolean) =>
+      options.reports?.connected(options.serverUrl, off, (report) =>
+        current.send(encode(runnerToServer, "report", report)),
+      );
+    let unreport: (() => void) | undefined;
     const timer = setTimeout(
       () => welcomed.reject(new Expected(`The server didn't answer within ${timeoutMs}ms: ${url}`)),
       timeoutMs,
@@ -1046,6 +1052,11 @@ export async function startRunner(options: {
         login = message.payload.login;
         shared = message.payload.shared;
         welcomed.resolve(message.payload);
+      } else if (message.kind === "reports") {
+        // The operator's switch or my "Send error reports" changed. Before welcome the welcome itself decides.
+        if (live !== current) return;
+        unreport?.();
+        unreport = reporting(message.payload.off);
       } else if (message.kind === "sharing") {
         shared = message.payload.shared;
       } else if (message.kind === "situation") {
@@ -1164,9 +1175,7 @@ export async function startRunner(options: {
       const welcome = await welcomed.promise;
       live = current;
       // Reports waiting on this machine go now, and later ones as they happen. A server that refuses them gets none, and the waiting ones are dropped.
-      const unreport = options.reports?.connected(options.serverUrl, welcome.reportsOff, (report) =>
-        current.send(encode(runnerToServer, "report", report)),
-      );
+      unreport = reporting(welcome.reportsOff);
       // Tell the server what was handed over while the connection was down.
       if (delivered.size > 0)
         current.send(encode(runnerToServer, "delivered", { ids: [...delivered] }));
